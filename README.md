@@ -14,11 +14,11 @@ pretend recurring private billing exists before it does.
 | Component | Status |
 | --- | --- |
 | Cairo helper | Builds locally |
-| Contract tests | 12 pass, including 128 fuzz runs |
-| Wallet action and recovery tests | 4 pass |
+| Contract tests | 15 pass, including 500 fuzz runs |
+| Client and publisher verifier tests | 12 pass |
 | Static client | Typecheck and production build pass |
 | Dependency audit | 0 known vulnerabilities |
-| Independent audit checkpoint | No retained P1 or P2 finding |
+| Security checkpoint | No retained high-severity finding in the current delta review |
 | Mainnet helper | Not deployed |
 | Public demo | [Live on GitHub Pages](https://welttowelt.github.io/veilpass/) |
 
@@ -27,14 +27,20 @@ addresses and transaction hashes stay empty until they exist.
 
 ## The transaction
 
-The privacy wallet prepares one STRK20 transaction with three actions.
+The creator first chooses a registered privacy address, amount, and access term.
+Veilpass generates a private offer link with a random nonce. The subscriber
+client commits to those terms as
+`Poseidon(creator, amount, duration_days, offer_nonce)`.
+
+The privacy wallet then prepares one STRK20 transaction with three actions.
 
 1. Withdraw the membership amount from the subscriber's shielded balance to the
    shared Veilpass helper.
 2. Create an open note for the creator. The pool knows the note recipient, but
    public observers cannot link that creator to the subscriber's wallet.
-3. Invoke the helper. It records the access commitment and expiry, approves the
-   exact payment amount back to the pool, and returns the open-note deposit.
+3. Invoke the helper. It records the access and offer commitments, activation
+   time, expiry, and note ID, approves the exact payment amount back to the
+   pool, and returns the open-note deposit.
 
 The helper calldata ends with `${openNoteIds[0]}`. The wallet replaces that
 literal placeholder with the note ID while assembling the transaction.
@@ -47,6 +53,10 @@ shielded subscriber balance
 random local secret
   -> Poseidon commitment on Starknet
   -> fixed membership expiry
+
+private creator offer
+  -> Poseidon(creator, amount, term, nonce)
+  -> exact publisher-side offer check
 ```
 
 ## Privacy boundary
@@ -58,25 +68,40 @@ The STRK20 transaction hides the link to the subscriber's public wallet and the
 creator recipient. The dapp never asks for a viewing key. Ready or Xverse keeps
 the private state and prepares the cryptographic proof inside the wallet flow.
 
-The access secret stays in the subscriber's browser. A publisher can hash that
-secret, read the commitment expiry, and return protected content from a server.
-The demo only verifies entitlement state. Static browser assets are not private.
+The access secret stays in the subscriber's browser. A publisher hashes that
+secret and verifies the recorded offer, exact start-to-expiry duration, active
+expiry, and creator-received note before returning protected content. The
+reusable verifier lives in
+[`web/src/lib/verify-membership.mjs`](web/src/lib/verify-membership.mjs).
+
+The creator-side note check uses the creator wallet's private viewing context.
+Veilpass never receives that viewing key. The demo only reads public entitlement
+state. Static browser assets are not private.
 Veilpass stores a pending pass before asking the wallet to generate a proof. A
 refresh can recover the secret and resume transaction confirmation.
+
+Creator offer links must travel through a private channel. If a link leaks, its
+nonce lets an observer recompute and correlate that offer commitment. See the
+[offer protocol](docs/offer-protocol.md) for the enforcement and privacy model.
 
 ## Contract invariants
 
 - Only the configured STRK20 pool can activate an entitlement.
-- Token, amount, commitment, and final open-note ID must be non-zero.
+- Token, amount, access commitment, offer commitment, and final open-note ID
+  must be non-zero.
 - Expiry must be in the future and at most 366 days away.
-- Each commitment can be activated once.
+- Each access commitment and open-note ID can be activated once.
 - The helper must hold the full payment amount.
 - ERC-20 approval is exact and must succeed before membership state is written.
+- Activation time, expiry, offer commitment, and note ID are written only after
+  approval succeeds.
 - The returned note ID, token, and amount match the wallet request.
 
 The contract and client checkpoints are in
 [audit/report-2026-08-15.md](audit/report-2026-08-15.md) and
-[audit/client-report-2026-08-15.md](audit/client-report-2026-08-15.md).
+[audit/client-report-2026-08-15.md](audit/client-report-2026-08-15.md). The
+[score-gap checkpoint](audit/score-gap-2026-08-15.md) tracks the distance from
+the full recurring-subscription RFP and final hackathon eligibility.
 
 ## Run the contract tests
 
@@ -91,8 +116,9 @@ snforge test
 ## Run the client
 
 The web app follows Wallet API v6 and starknet.js 10.4.0. It supports privacy
-wallet discovery, the three-action membership transaction, local pass-secret
-generation, and onchain expiry checks.
+wallet discovery, creator offer links, the three-action membership transaction,
+local pass-secret generation, onchain entitlement checks, and a reusable
+publisher verifier.
 
 ```bash
 cd web
@@ -108,7 +134,7 @@ NEXT_PUBLIC_STARKNET_RPC_URL=<mainnet RPC URL>
 NEXT_PUBLIC_VEILPASS_HELPER=<deployed helper address>
 ```
 
-Run the action and recovery tests without installing frontend packages.
+Run the client and publisher-verifier tests.
 
 ```bash
 cd web

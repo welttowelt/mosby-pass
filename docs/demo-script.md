@@ -26,30 +26,30 @@ Say:
 > subscriber wallet and the link to the creator. Ready owns the viewing key and
 > generates the cryptographic proof. The dapp never asks for either.
 
-### 0:45 to 1:10
+### 0:45 to 1:15
 
-Show the route panel, then briefly show `buildMembershipActions` in the public
-repository.
+Create a 30-day creator offer, copy the private link, then open its subscriber
+view. Show that the recipient, price, and term are locked.
 
 Say:
 
-> The wallet prepares one atomic transaction with three actions. It withdraws
-> from the shielded balance to the shared helper, creates an open note for the
-> creator, and invokes Veilpass with the wallet-resolved note ID. The contract
-> accepts calls only from the official STRK20 pool and approves exactly the
-> payment amount back to that pool.
+> The creator chooses the recipient, price, and term. Veilpass commits to those
+> terms with a private offer nonce, without putting the creator address in the
+> helper calldata. The publisher later checks the exact offer and duration, then
+> confirms the creator received the wallet-resolved note.
 
-### 1:10 to 1:45
+### 1:15 to 1:45
 
-Connect Ready on Starknet mainnet. Enter the creator address, use the smallest
-pre-approved demo amount, select a 30-day term, and create the membership. Keep
-the wallet confirmation visible, but hide unrelated balances and account data.
+Connect Ready on Starknet mainnet from the locked subscriber view and create the
+membership with the smallest pre-approved demo amount. Keep the wallet
+confirmation visible, but hide unrelated balances and account data.
 
 Say:
 
 > I am paying from an existing shielded STRK balance. Before the wallet request,
 > Veilpass creates a random local secret and stores a recoverable pending pass.
-> Ready assembles the STRK20 actions and generates the proof. I confirm the
+> Ready assembles three STRK20 actions: shielded withdrawal, creator open note,
+> and a pool-only helper call. It generates the proof, and I confirm the
 > transaction in the wallet.
 
 ### 1:45 to 2:10
@@ -72,8 +72,9 @@ the active expiry returned from Starknet. Keep most of the secret out of frame.
 Say:
 
 > The chain stores a Poseidon commitment rather than the bearer secret. Veilpass
-> hashes the secret locally, reads the expiry, and confirms access. A publisher
-> would perform this check on a server before returning protected content. This
+> hashes the secret locally and reads the activation, expiry, offer, and note
+> commitment state. The publisher library additionally enforces the creator's
+> exact term and private note receipt before returning protected content. This
 > static demo does not claim that browser assets are private.
 
 ### 2:35 to 2:50
@@ -82,10 +83,11 @@ Show the audit files, green GitHub Actions run, and MIT license.
 
 Say:
 
-> The helper has twelve passing contract tests, including replay, caller,
-> expiry, balance, and approval failures. The client has recovery tests and a
-> dependency audit with zero known vulnerabilities. The source, deployment
-> hashes, and checks are public under the MIT license.
+> The helper has fifteen passing contract tests, including access and note
+> replay, caller, expiry, balance, and approval failures. Twelve client tests
+> cover wallet actions, recovery, creator offers, and publisher verification.
+> The dependency audit reports zero known vulnerabilities. The source,
+> deployment hashes, and checks are public under the MIT license.
 
 ## Capture checklist
 

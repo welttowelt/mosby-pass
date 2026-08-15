@@ -16,8 +16,11 @@ import {
 import {
   LAST_PASS_KEY,
   PENDING_PASS_KEY,
+  buildOfferUrl,
   buildMembershipActions,
+  parseOfferParams,
   parseStoredPass,
+  parseTokenAmount,
 } from "../lib/veilpass-actions.mjs";
 import type { StoredPass } from "../lib/veilpass-actions.mjs";
 
@@ -41,17 +44,6 @@ function compact(value: string): string {
   return value.length < 16 ? value : `${value.slice(0, 8)}…${value.slice(-5)}`;
 }
 
-function parseTokenAmount(value: string, decimals = 18): bigint {
-  const normalized = value.trim();
-  if (!/^\d+(\.\d+)?$/.test(normalized)) throw new Error("Enter a positive decimal amount.");
-  const [whole, fraction = ""] = normalized.split(".");
-  if (fraction.length > decimals) throw new Error(`Use no more than ${decimals} decimal places.`);
-  const amount = BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"));
-  if (amount <= 0n) throw new Error("Amount must be greater than zero.");
-  if (amount >= 2n ** 128n) throw new Error("Amount exceeds the helper limit.");
-  return amount;
-}
-
 function freshSecret(): string {
   const bytes = new Uint8Array(30);
   crypto.getRandomValues(bytes);
@@ -61,6 +53,15 @@ function freshSecret(): string {
 
 function commitmentFor(secret: string): string {
   return num.toHex(hash.computePoseidonHashOnElements([secret]));
+}
+
+function offerCommitmentFor(
+  creator: string,
+  amount: bigint,
+  days: number,
+  nonce: string,
+): string {
+  return num.toHex(hash.computePoseidonHashOnElements([creator, amount, days, nonce]));
 }
 
 function normalizeWalletName(value: string): string {
@@ -76,6 +77,10 @@ export default function Home() {
   const [creator, setCreator] = useState("");
   const [amount, setAmount] = useState("0.1");
   const [days, setDays] = useState(30);
+  const [offerNonce, setOfferNonce] = useState("");
+  const [offerLocked, setOfferLocked] = useState(false);
+  const [offerLink, setOfferLink] = useState("");
+  const [offerStatus, setOfferStatus] = useState("");
   const [tx, setTx] = useState<TxState>({ kind: "idle" });
   const [pass, setPass] = useState<Pass>();
   const [passInput, setPassInput] = useState("");
@@ -92,6 +97,20 @@ export default function Home() {
     update(store.getWallets());
     const unsubscribe = store.subscribe((next) => update(next.slice()));
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const loadedOffer = parseOfferParams(window.location.search, validateAndParseAddress);
+    if (!loadedOffer) {
+      if (window.location.search) setOfferStatus("This creator offer link is incomplete or invalid.");
+      return;
+    }
+    setCreator(loadedOffer.creator);
+    setAmount(loadedOffer.amount);
+    setDays(loadedOffer.days);
+    setOfferNonce(loadedOffer.nonce);
+    setOfferLocked(true);
+    setOfferStatus("Creator offer loaded. Its price, term, and recipient are locked for this pass.");
   }, []);
 
   useEffect(() => {
@@ -157,11 +176,37 @@ export default function Home() {
       const connectedChain = (await walletV6.requestChainId(wallet)) as string;
       setWalletAccount(account);
       setAddress(connectedAddress);
-      setCreator(connectedAddress);
+      if (!offerLocked) setCreator(connectedAddress);
       setChainId(connectedChain);
       setWalletPicker(false);
     } catch (error) {
       setTx({ kind: "error", detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function createOffer() {
+    try {
+      const creatorAddress = validateAndParseAddress(creator);
+      parseTokenAmount(amount);
+      const nonce = freshSecret();
+      const link = buildOfferUrl({
+        baseUrl: `${window.location.origin}${window.location.pathname}`,
+        creator: creatorAddress,
+        amount,
+        days,
+        nonce,
+      });
+      setOfferNonce(nonce);
+      setOfferLink(link);
+      setOfferStatus("Offer ready. Open the subscriber view before making a membership payment.");
+      try {
+        await navigator.clipboard.writeText(link);
+        setOfferStatus("Creator offer link copied. Open the subscriber view before making a payment.");
+      } catch {
+        setOfferStatus("Offer ready. Copy the displayed link manually.");
+      }
+    } catch (error) {
+      setOfferStatus(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -173,11 +218,14 @@ export default function Home() {
     try {
       if (!isMainnet) throw new Error("Switch the connected wallet to Starknet mainnet.");
       if (!helperReady) throw new Error("The mainnet helper address has not been configured yet.");
+      if (!offerLocked || !offerNonce) throw new Error("Open a creator offer link before subscribing.");
       const creatorAddress = validateAndParseAddress(creator);
       const rawAmount = parseTokenAmount(amount);
       const secret = freshSecret();
       const commitment = commitmentFor(secret);
-      const expiry = Math.floor(Date.now() / 1000) + days * 24 * 60 * 60;
+      const offerCommitment = offerCommitmentFor(creatorAddress, rawAmount, days, offerNonce);
+      const durationSeconds = days * 24 * 60 * 60;
+      const expiry = Math.floor(Date.now() / 1000) + durationSeconds;
       const helper = num.toHex(HELPER);
       const actions = buildMembershipActions({
         token: STRK,
@@ -185,11 +233,12 @@ export default function Home() {
         creator: creatorAddress,
         amount: rawAmount,
         commitment,
-        expiry,
+        offerCommitment,
+        durationSeconds,
         toHex: num.toHex,
       }) as WALLET_API.STRK20_ACTION[];
 
-      const pendingPass = { secret, commitment, expiry, transactionHash: "" };
+      const pendingPass = { secret, commitment, offerCommitment, expiry, transactionHash: "" };
       localStorage.setItem(PENDING_PASS_KEY, JSON.stringify(pendingPass));
       setPass(pendingPass);
       setPassInput(secret);
@@ -224,15 +273,35 @@ export default function Home() {
     try {
       if (!helperReady) throw new Error("The verifier becomes available after mainnet deployment.");
       const commitment = commitmentFor(passInput.trim());
-      const result = await provider.callContract({
-        contractAddress: HELPER,
-        entrypoint: "get_expiry",
-        calldata: [commitment],
-      });
-      const expiry = Number(num.toBigInt(result[0] ?? "0x0"));
+      const [startedResult, expiryResult, offerResult, noteResult] = await Promise.all([
+        provider.callContract({
+          contractAddress: HELPER,
+          entrypoint: "get_started",
+          calldata: [commitment],
+        }),
+        provider.callContract({
+          contractAddress: HELPER,
+          entrypoint: "get_expiry",
+          calldata: [commitment],
+        }),
+        provider.callContract({
+          contractAddress: HELPER,
+          entrypoint: "get_offer",
+          calldata: [commitment],
+        }),
+        provider.callContract({
+          contractAddress: HELPER,
+          entrypoint: "get_note",
+          calldata: [commitment],
+        }),
+      ]);
+      const started = Number(num.toBigInt(startedResult[0] ?? "0x0"));
+      const expiry = Number(num.toBigInt(expiryResult[0] ?? "0x0"));
+      const offer = num.toHex(offerResult[0] ?? "0x0");
+      const note = num.toHex(noteResult[0] ?? "0x0");
       setAccessResult(
         expiry > Math.floor(Date.now() / 1000)
-          ? `Access active until ${new Date(expiry * 1000).toLocaleString()}.`
+          ? `Access active for ${Math.round((expiry - started) / 86_400)} days, until ${new Date(expiry * 1000).toLocaleString()}. Offer ${compact(offer)} · note ${compact(note)}.`
           : "No active membership matches this pass secret.",
       );
     } catch (error) {
@@ -268,7 +337,7 @@ export default function Home() {
           commitment. The creator never sees the subscriber&apos;s public wallet.
         </p>
         <div className="truthStrip">
-          <span>PUBLIC</span> helper, token, amount, time, commitment
+          <span>PUBLIC</span> helper, token, amount, time, opaque commitments
           <span>HIDDEN</span> subscriber wallet, private balance, creator link
         </div>
       </section>
@@ -279,21 +348,30 @@ export default function Home() {
           <b>№ 0001</b>
         </div>
         <div className="formPanel">
+          <div className={`offerState ${offerLocked ? "offerState-loaded" : ""}`}>
+            <b>{offerLocked ? "Creator offer loaded" : "Creator setup"}</b>
+            <span>
+              {offerLocked
+                ? "The recipient, price, and term are fixed by this link."
+                : "Choose the terms and create a private offer link for a subscriber."}
+            </span>
+            {offerLocked && <a href="./">Create another offer</a>}
+          </div>
           <label>
             Creator&apos;s registered privacy address
-            <input value={creator} onChange={(event) => setCreator(event.target.value)} placeholder="0x…" />
+            <input value={creator} onChange={(event) => setCreator(event.target.value)} placeholder="0x…" disabled={offerLocked} />
           </label>
           <div className="fieldPair">
             <label>
               Payment
               <div className="amountField">
-                <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+                <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={offerLocked} />
                 <span>STRK</span>
               </div>
             </label>
             <label>
               Access term
-              <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+              <select value={days} onChange={(event) => setDays(Number(event.target.value))} disabled={offerLocked}>
                 <option value={7}>7 days</option>
                 <option value={30}>30 days</option>
                 <option value={90}>90 days</option>
@@ -301,8 +379,20 @@ export default function Home() {
               </select>
             </label>
           </div>
-          <button className="joinButton" onClick={join} disabled={tx.kind === "proving" || tx.kind === "submitted"}>
-            {address ? "Create private membership" : "Connect and continue"}
+          {!offerLocked && (
+            <div className="offerTools">
+              <button className="offerButton" onClick={createOffer}>Copy creator offer link</button>
+              {offerLink && <a href={offerLink}>Open subscriber view</a>}
+              <p role="status">{offerStatus || "No payment is prepared while creating an offer."}</p>
+            </div>
+          )}
+          {offerLocked && <p className="offerNotice" role="status">{offerStatus}</p>}
+          <button
+            className="joinButton"
+            onClick={join}
+            disabled={!offerLocked || tx.kind === "proving" || tx.kind === "submitted"}
+          >
+            {!offerLocked ? "Create an offer first" : address ? "Create private membership" : "Connect and continue"}
             <span>↗</span>
           </button>
           <div className={`status status-${tx.kind}`} role="status">
@@ -319,7 +409,7 @@ export default function Home() {
           <ol>
             <li><b>Withdraw</b><span>shielded balance → shared helper</span></li>
             <li><b>Open note</b><span>creator receives the payment privately</span></li>
-            <li><b>Invoke</b><span>commitment + expiry recorded atomically</span></li>
+            <li><b>Invoke</b><span>offer, pass, note, and expiry bound atomically</span></li>
           </ol>
           <p>The wallet owns the viewing key and builds the proof. Veilpass never receives either.</p>
         </aside>
@@ -328,7 +418,7 @@ export default function Home() {
       <section className="passSection">
         <div>
           <div className="eyebrow">BEARER ACCESS / KEEP LOCAL</div>
-          <h2>The public chain sees a commitment.<br />You keep the secret.</h2>
+          <h2>The public chain sees commitments.<br />You keep the secret.</h2>
           <p>
             A real publisher would verify the secret server-side before returning protected media.
             This demo verifies the entitlement only; it does not claim static browser assets are private.
@@ -337,6 +427,7 @@ export default function Home() {
         <div className="passCard">
           <div className="passCut">PRIVATE MEMBER</div>
           <code>{pass ? compact(pass.secret) : "created after confirmation"}</code>
+          {pass && <small>offer {compact(pass.offerCommitment)}</small>}
           <button onClick={copySecret} disabled={!pass}>Copy pass secret</button>
         </div>
         <div className="verifyBox">

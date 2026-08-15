@@ -31,9 +31,9 @@ Reserved wallet actions:
 4. Record the declaration hash, deployment hash, class hash, and helper address.
 
 The audited build resolves to Sierra class hash
-`0x0259f051e136da4fed7e5f4cbf51aa39a5b79f04c656b761471ada1f805aa174`
+`0x03152fb2ef8342b6e6ad7dd5e15f110afe14b9b15e349c6ff1941871bb0d5495`
 and compiled class hash
-`0x068af6a1c2b76f9152195946a118d63da82d1592c3aa441d406c253bd2b2aff6`.
+`0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658`.
 Confirm both values again immediately before signing.
 
 With a user-selected Starknet Foundry account name, the exact mainnet sequence
@@ -45,7 +45,7 @@ sncast --profile mainnet --account <ACCOUNT_NAME> --wait --json \
 
 sncast --profile mainnet --account <ACCOUNT_NAME> --wait --json \
   deploy --class-hash \
-  0x0259f051e136da4fed7e5f4cbf51aa39a5b79f04c656b761471ada1f805aa174 \
+  0x03152fb2ef8342b6e6ad7dd5e15f110afe14b9b15e349c6ff1941871bb0d5495 \
   --constructor-calldata \
   0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a \
   --network mainnet

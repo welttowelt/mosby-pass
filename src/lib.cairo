@@ -21,11 +21,16 @@ pub trait IVeilpass<TState> {
         token: ContractAddress,
         amount: u128,
         commitment: felt252,
-        expires_at: u64,
+        duration_seconds: u64,
+        offer_commitment: felt252,
         note_id: felt252,
     ) -> Span<OpenNoteDeposit>;
     fn get_pool(self: @TState) -> ContractAddress;
+    fn get_started(self: @TState, commitment: felt252) -> u64;
     fn get_expiry(self: @TState, commitment: felt252) -> u64;
+    fn get_offer(self: @TState, commitment: felt252) -> felt252;
+    fn get_note(self: @TState, commitment: felt252) -> felt252;
+    fn is_note_used(self: @TState, note_id: felt252) -> bool;
     fn is_active(self: @TState, commitment: felt252) -> bool;
 }
 
@@ -47,9 +52,11 @@ pub mod Veilpass {
         pub const ZERO_NOTE: felt252 = 'ZERO_NOTE';
         pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
         pub const ZERO_COMMITMENT: felt252 = 'ZERO_COMMITMENT';
-        pub const EXPIRED: felt252 = 'EXPIRED';
+        pub const ZERO_OFFER: felt252 = 'ZERO_OFFER';
+        pub const ZERO_DURATION: felt252 = 'ZERO_DURATION';
         pub const DURATION_TOO_LONG: felt252 = 'DURATION_TOO_LONG';
         pub const DUPLICATE: felt252 = 'DUPLICATE';
+        pub const DUPLICATE_NOTE: felt252 = 'DUPLICATE_NOTE';
         pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
         pub const APPROVE_FAILED: felt252 = 'APPROVE_FAILED';
     }
@@ -57,22 +64,30 @@ pub mod Veilpass {
     #[storage]
     struct Storage {
         pool: ContractAddress,
+        membership_started: Map<felt252, u64>,
         membership_expiry: Map<felt252, u64>,
+        membership_offer: Map<felt252, felt252>,
+        membership_note: Map<felt252, felt252>,
+        used_note: Map<felt252, bool>,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
+    pub enum Event {
         MembershipActivated: MembershipActivated,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct MembershipActivated {
+    pub struct MembershipActivated {
         #[key]
-        commitment: felt252,
-        expires_at: u64,
-        token: ContractAddress,
-        amount: u128,
+        pub commitment: felt252,
+        #[key]
+        pub offer_commitment: felt252,
+        pub started_at: u64,
+        pub expires_at: u64,
+        pub token: ContractAddress,
+        pub amount: u128,
+        pub note_id: felt252,
     }
 
     #[constructor]
@@ -90,7 +105,8 @@ pub mod Veilpass {
             token: ContractAddress,
             amount: u128,
             commitment: felt252,
-            expires_at: u64,
+            duration_seconds: u64,
+            offer_commitment: felt252,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
             let caller = get_caller_address();
@@ -100,11 +116,14 @@ pub mod Veilpass {
             assert(note_id != 0, errors::ZERO_NOTE);
             assert(amount != 0, errors::ZERO_AMOUNT);
             assert(commitment != 0, errors::ZERO_COMMITMENT);
+            assert(offer_commitment != 0, errors::ZERO_OFFER);
+            assert(duration_seconds != 0, errors::ZERO_DURATION);
+            assert(duration_seconds <= MAX_MEMBERSHIP_DURATION, errors::DURATION_TOO_LONG);
 
             let now = get_block_timestamp();
-            assert(expires_at > now, errors::EXPIRED);
-            assert(expires_at - now <= MAX_MEMBERSHIP_DURATION, errors::DURATION_TOO_LONG);
+            let expires_at = now + duration_seconds;
             assert(self.membership_expiry.entry(commitment).read() == 0, errors::DUPLICATE);
+            assert(!self.used_note.entry(note_id).read(), errors::DUPLICATE_NOTE);
 
             let erc20 = IERC20Dispatcher { contract_address: token };
             let amount_u256: u256 = amount.into();
@@ -115,8 +134,23 @@ pub mod Veilpass {
             // the token confirms approval, without depending on rollback behavior.
             let approved = erc20.approve(caller, amount_u256);
             assert(approved, errors::APPROVE_FAILED);
+            self.membership_started.entry(commitment).write(now);
             self.membership_expiry.entry(commitment).write(expires_at);
-            self.emit(MembershipActivated { commitment, expires_at, token, amount });
+            self.membership_offer.entry(commitment).write(offer_commitment);
+            self.membership_note.entry(commitment).write(note_id);
+            self.used_note.entry(note_id).write(true);
+            self
+                .emit(
+                    MembershipActivated {
+                        commitment,
+                        offer_commitment,
+                        started_at: now,
+                        expires_at,
+                        token,
+                        amount,
+                        note_id,
+                    },
+                );
 
             array![OpenNoteDeposit { note_id, token, amount }].span()
         }
@@ -125,8 +159,24 @@ pub mod Veilpass {
             self.pool.read()
         }
 
+        fn get_started(self: @ContractState, commitment: felt252) -> u64 {
+            self.membership_started.entry(commitment).read()
+        }
+
         fn get_expiry(self: @ContractState, commitment: felt252) -> u64 {
             self.membership_expiry.entry(commitment).read()
+        }
+
+        fn get_offer(self: @ContractState, commitment: felt252) -> felt252 {
+            self.membership_offer.entry(commitment).read()
+        }
+
+        fn get_note(self: @ContractState, commitment: felt252) -> felt252 {
+            self.membership_note.entry(commitment).read()
+        }
+
+        fn is_note_used(self: @ContractState, note_id: felt252) -> bool {
+            self.used_note.entry(note_id).read()
         }
 
         fn is_active(self: @ContractState, commitment: felt252) -> bool {

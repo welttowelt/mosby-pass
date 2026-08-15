@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-15T08:20:00Z",
+  "as_of": "2026-08-15T08:51:10Z",
   "toolchain": {
     "scarb": "2.14.0",
     "starknet_foundry": "0.55.0",
@@ -7,24 +7,31 @@
     "starknet_js": "10.4.0"
   },
   "sources": {
-    "src/lib.cairo": "7c5970f4c599d98b3f72524b06215de367a5c29262f6b574ad9b637471490db5",
-    "tests/test_veilpass.cairo": "3d523fe922fc53bd78e44dca04bac62d98ad5c05475ce56c7e4683b8fe610376",
+    "src/lib.cairo": "2185e59c8f2c8a0065e96f2ef416cf1afcee935411c0151d011676ef1d48aac7",
+    "tests/test_veilpass.cairo": "a53a6c3803784fef31e6b59afb88ca18ac9ba3facfe5d4562fe69b57cb66a7f5",
     "Scarb.toml": "36eec1a26e292b54fce4ef807f2be4d969372a51bd1ce7db2a6e6728455681c0",
-    "web/src/app/page.tsx": "6c94dac08e0c043383a1278270bf46f0a692e44c5cfb2f740b61ef5358daa271",
-    "web/src/lib/veilpass-actions.mjs": "f10bc2b7abcfb8a4efc882b5d8df9972b4d6ff304ed1f3ab3394c8194221fc2a",
+    "web/src/app/page.tsx": "4c524990f068151bf43ac78ce099f4ea1ecde7bd45b9fa0b193ef83272d3d93f",
+    "web/src/app/globals.css": "2e3d1be002c872f9440b88d19ca6ff0bb736427600ed0d892abbac9774a20add",
+    "web/src/lib/veilpass-actions.mjs": "780a9c03364bd291479ff76f299936881e85738d9ecefbf7cb28b03bd0f796e0",
+    "web/src/lib/veilpass-actions.d.mts": "153f6cbc0c1f18e0191e127b0e51b43ada3264a9a480554b169824ddd08d2f63",
+    "web/src/lib/verify-membership.mjs": "1d9b30205a30771cc7cf6ff695bef7a3d540bfc8abcb10424a141d1bf0b51e60",
+    "web/src/lib/verify-membership.d.mts": "1d359e3b7d1f348d923a7a4222626f11597bf84b2163b4579106fe39c125e4c1",
+    "web/tests/veilpass-actions.test.mjs": "1dd391a7f0e88397d08fd168c4ee88b1f8e197f55de15183c48b5ed8aa004523",
+    "web/tests/verify-membership.test.mjs": "22ca29a8665c6d1cffbc9a279b800f66611be51aba648eab622e72d2fb345088",
+    "web/next.config.mjs": "3d374416b4aba598860253541d490eacd5e690fc3ee937077c01f56ffa6c004f",
     "web/package.json": "53ecba660bb39d7b2f2929d9ef5e22080229646622cee1661fe4790b949bf5a3",
     "web/package-lock.json": "2cb00aa03d8d3d515893f9978a0aa7f2a04aeb2fa41f88e7fa2c0b879e41c303"
   },
   "artifacts": {
     "sierra": {
       "path": "target/dev/veilpass_Veilpass.contract_class.json",
-      "sha256": "c16dba3e12ae8863ab514585590db77aed6c9950719a4a75072143b876154c79",
-      "class_hash": "0x0259f051e136da4fed7e5f4cbf51aa39a5b79f04c656b761471ada1f805aa174"
+      "sha256": "f3895ede8e4cff59542efe684afee6bf69b54c825911a5321aa705f1c15ba81a",
+      "class_hash": "0x03152fb2ef8342b6e6ad7dd5e15f110afe14b9b15e349c6ff1941871bb0d5495"
     },
     "compiled": {
       "path": "target/dev/veilpass_Veilpass.compiled_contract_class.json",
-      "sha256": "4c9219814c4003cf5841826bdfafdebc993befc46a08591a549ea8bbaa1b9e10",
-      "class_hash": "0x068af6a1c2b76f9152195946a118d63da82d1592c3aa441d406c253bd2b2aff6"
+      "sha256": "0d99f4956bc3e291ceb29312fa0125b4e09f91a18d0efc8cdbfeb61b280e449e",
+      "class_hash": "0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658"
     }
   }
 }
