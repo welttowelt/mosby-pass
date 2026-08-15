@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mosby Pass | Private event admission",
+  title: "MOSBY PASS / PRIVATE EVENT ADMISSION",
   description:
-    "Pay with shielded STRK and enter without exposing your public wallet. Powered by STRK20 on Starknet.",
+    "Pay from shielded STRK. Your browser proves control of the event pass at the gate.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

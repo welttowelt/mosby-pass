@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-15T11:15:16Z",
+  "as_of": "2026-08-15T11:32:00Z",
   "toolchain": {
     "scarb": "2.14.0",
     "starknet_foundry": "0.55.0",
@@ -10,8 +10,8 @@
     "src/lib.cairo": "2185e59c8f2c8a0065e96f2ef416cf1afcee935411c0151d011676ef1d48aac7",
     "tests/test_veilpass.cairo": "a53a6c3803784fef31e6b59afb88ca18ac9ba3facfe5d4562fe69b57cb66a7f5",
     "Scarb.toml": "36eec1a26e292b54fce4ef807f2be4d969372a51bd1ce7db2a6e6728455681c0",
-    "web/src/app/page.tsx": "905f50ec5bab5a423aa76dfd67ef6ba89db0ab5ead250045e779448eeb4278e6",
-    "web/src/app/globals.css": "db5c5182ba201b531a0942493b00fc391442edea4795ed0657ade33eded65c85",
+    "web/src/app/page.tsx": "cd30cec716eb62968bc0889b63314e98d2e36c53cbf4fe3e20b1e633cb5d9403",
+    "web/src/app/globals.css": "3bede6357d970f8029c2cc7be844da81e4072901029c1d963523764844a0f35f",
     "web/src/lib/veilpass-actions.mjs": "905e8cf499e56ab3d39035a975da664033fc5451c563b3445126278fd729b74a",
     "web/src/lib/veilpass-actions.d.mts": "4208b276715feab0c35e9d27370fa79233dbd10047a6eada490558402edfcd16",
     "web/src/lib/event-pass.mjs": "c3162856ef2e341cde8c01741962acb88affef55c24705cd61b8ef4c02402aa3",

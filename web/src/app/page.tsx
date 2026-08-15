@@ -30,9 +30,9 @@ const HELPER = process.env.NEXT_PUBLIC_VEILPASS_HELPER ?? "0x05dd2c68fa1c0fba3b4
 const MAX_DURATION_SECONDS = 366 * 24 * 60 * 60;
 const provider = new RpcProvider({ nodeUrl: RPC_URL });
 const STATIONS = [
-  { id: "organizer", number: "01", name: "Organizer desk", detail: "Create event QR" },
-  { id: "attendee", number: "02", name: "Attendee pass", detail: "Shielded STRK → pass" },
-  { id: "gate", number: "03", name: "Gate scanner", detail: "Challenge → admit once" },
+  { id: "organizer", number: "01", name: "Organizer desk", detail: "Set event terms" },
+  { id: "attendee", number: "02", name: "Attendee pass", detail: "Pay from shielded STRK" },
+  { id: "gate", number: "03", name: "Gate scanner", detail: "Check the pass once" },
 ] as const;
 type StationId = (typeof STATIONS)[number]["id"];
 
@@ -75,7 +75,7 @@ export default function Home() {
   const [address, setAddress] = useState("");
   const [chainId, setChainId] = useState("");
   const [title, setTitle] = useState("Midnight Assembly");
-  const [venue, setVenue] = useState("Hall 20 · Berlin");
+  const [venue, setVenue] = useState("Hall 20 / Berlin");
   const [organizer, setOrganizer] = useState("");
   const [amount, setAmount] = useState("0.1");
   const [startsInput, setStartsInput] = useState("");
@@ -83,7 +83,7 @@ export default function Home() {
   const [eventOffer, setEventOffer] = useState<EventOffer>();
   const [offerLink, setOfferLink] = useState("");
   const [offerQr, setOfferQr] = useState("");
-  const [offerStatus, setOfferStatus] = useState("No transaction is prepared while creating an event.");
+  const [offerStatus, setOfferStatus] = useState("Creating an event does not request a transaction.");
   const [tx, setTx] = useState<TxState>({ kind: "idle" });
   const [pass, setPass] = useState<StoredPass>();
   const [gateChallenge, setGateChallenge] = useState<GateChallenge>();
@@ -101,7 +101,7 @@ export default function Home() {
     setClosesInput(localDateTime(now + 27 * 60 * 60));
     const loaded = parseEventOffer(window.location.search, (value) => validateAndParseAddress(value ?? ""), parseTokenAmount);
     if (!loaded) {
-      if (window.location.search) setOfferStatus("This event link is incomplete or invalid.");
+      if (window.location.search) setOfferStatus("The event link is incomplete or invalid.");
       return;
     }
     setEventOffer(loaded);
@@ -113,7 +113,7 @@ export default function Home() {
     setStartsInput(localDateTime(loaded.startsAt));
     setClosesInput(localDateTime(loaded.closesAt));
     setOfferLink(window.location.href);
-    setOfferStatus("Event loaded. Price, recipient, venue and admission window are cryptographically bound.");
+    setOfferStatus("Event loaded. The QR binds the price, organizer, venue and admission window.");
   }, []);
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function Home() {
     setPass(recovered);
     if (!pending) return;
     if (!pending.transactionHash) {
-      setTx({ kind: "error", detail: "Recovered an unused device key from an interrupted wallet request. Start again when ready." });
+      setTx({ kind: "error", detail: "The wallet request stopped before submission. The unused device key remains in this browser." });
       return;
     }
     let cancelled = false;
@@ -174,7 +174,7 @@ export default function Home() {
     try {
       const account = await WalletAccountV6.connect(provider, wallet);
       const accounts = await walletV6.requestAccounts(wallet);
-      if (!Array.isArray(accounts) || !accounts[0]) throw new Error("This wallet did not return a Starknet account.");
+      if (!Array.isArray(accounts) || !accounts[0]) throw new Error("The selected wallet did not return a Starknet account.");
       const connectedAddress = validateAndParseAddress(accounts[0]);
       setWalletAccount(account);
       setAddress(connectedAddress);
@@ -213,7 +213,7 @@ export default function Home() {
       if (!parsed) throw new Error("Could not encode the event offer.");
       setEventOffer(parsed);
       setOfferLink(link);
-      setOfferStatus("Event QR ready. It carries public terms, not an attendee identity.");
+      setOfferStatus("The event QR contains the public terms. It contains no attendee identity.");
       try { await navigator.clipboard.writeText(link); } catch { /* Manual copy remains available. */ }
     } catch (error) {
       setOfferStatus(error instanceof Error ? error.message : String(error));
@@ -228,7 +228,7 @@ export default function Home() {
       if (!eventOffer) throw new Error("Open an organizer event link first.");
       const now = Math.floor(Date.now() / 1000);
       const durationSeconds = eventOffer.closesAt - now;
-      if (durationSeconds <= 0 || durationSeconds > MAX_DURATION_SECONDS) throw new Error("This event is outside the helper admission window.");
+      if (durationSeconds <= 0 || durationSeconds > MAX_DURATION_SECONDS) throw new Error("The event window has closed or exceeds the helper limit.");
       const credential = await generateAdmissionCredential();
       const pendingPass: StoredPass = {
         ...credential,
@@ -276,7 +276,7 @@ export default function Home() {
     setChallengeText(encoded);
     setProofText("");
     setProofQr("");
-    setGateResult("Fresh five-minute challenge ready. Send it to the attendee device.");
+    setGateResult("The five-minute challenge is ready. Send it to the attendee device.");
     try { await navigator.clipboard.writeText(encoded); } catch { /* Manual copy remains available. */ }
   }
 
@@ -287,7 +287,7 @@ export default function Home() {
       const proof = await signGateChallenge(pass, challenge);
       const encoded = JSON.stringify(proof);
       setProofText(encoded);
-      setProofStatus("Signed locally. The private key never enters the gate payload.");
+      setProofStatus("The pass device signed the challenge. The private key stays in this browser.");
       try { await navigator.clipboard.writeText(encoded); } catch { /* Manual copy remains available. */ }
     } catch (error) {
       setProofStatus(error instanceof Error ? error.message : String(error));
@@ -320,7 +320,7 @@ export default function Home() {
       if (now < eventOffer.startsAt) throw new Error("The admission window has not opened.");
       if (now >= eventOffer.closesAt || now >= expiry) throw new Error("The admission window has closed.");
       localStorage.setItem(usedKey, String(now));
-      setGateResult(`ADMIT · device signature valid · paid event commitment ${compact(onchainOffer)} · note ${compact(note)}`);
+      setGateResult(`ADMIT / DEVICE SIGNATURE VALID / EVENT ${compact(onchainOffer)} / NOTE ${compact(note)}`);
     } catch (error) {
       setGateResult(error instanceof Error ? error.message : String(error));
     }
@@ -331,14 +331,14 @@ export default function Home() {
       <div className="grain" aria-hidden="true" />
       <nav className="nav">
         <a className="wordmark" href="#top" aria-label="Mosby Pass home">MOSBY<span>/</span>PASS</a>
-        <div className="navClaim">PRIVATE EVENT ADMISSION · STARKNET</div>
+        <div className="navClaim">PRIVATE EVENT ADMISSION / STARKNET</div>
         <button className="walletButton" onClick={() => setWalletPicker(true)}>{address ? compact(address) : "Connect privacy wallet"}</button>
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow">A PAYMENT SHOULD OPEN THE DOOR — NOT YOUR WALLET HISTORY</div>
+        <div className="eyebrow">PAY FOR ENTRY. KEEP YOUR WALLET HISTORY PRIVATE.</div>
         <h1>PRIVATE ADMISSION</h1>
-        <p className="heroCopy">Mosby Pass turns shielded STRK into a device-bound event pass. Scan the invitation, pay privately, and prove the pass at the door without exposing your public wallet.</p>
+        <p className="heroCopy">Scan the event QR and pay with shielded STRK. At the door, your browser signs a fresh gate challenge without exposing your public wallet to the organizer.</p>
       </section>
 
       <section className="routeStrip" aria-label="Mosby Pass flow">
@@ -355,7 +355,7 @@ export default function Home() {
 
       {activeStation === "organizer" && (
       <section className="station station-organizer">
-        <header><span>STATION 01</span><h2>Print the invitation.</h2><p>The QR fixes the event, venue, price, recipient and gate window. It contains no attendee identity.</p></header>
+        <header><span>STATION 01</span><h2>Set the event terms.</h2><p>The QR locks the venue, price, organizer and gate window. It contains no attendee identity.</p></header>
         <div className="formGrid">
           <label>Event<input value={title} onChange={(event) => setTitle(event.target.value)} disabled={eventLocked} /></label>
           <label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} disabled={eventLocked} /></label>
@@ -371,14 +371,14 @@ export default function Home() {
         <aside className="qrTicket">
           <div className="ticketTop"><span>{eventOffer?.title ?? "EVENT QR"}</span><b>№ 001</b></div>
           {offerQr ? <img src={offerQr} alt="Event offer QR code" /> : <div className="qrPlaceholder">QR<br />PENDING</div>}
-          <code>{offerLink ? compact(offerLink) : "terms become a shareable link"}</code>
+          <code>{offerLink ? compact(offerLink) : "THE EVENT LINK APPEARS HERE"}</code>
         </aside>
       </section>
       )}
 
       {activeStation === "attendee" && (
       <section className="station station-attendee">
-        <header><span>STATION 02</span><h2>Pay without checking in publicly.</h2><p>Ready or Xverse constructs the privacy proof. Mosby Pass receives neither the viewing key nor the public-wallet link.</p></header>
+        <header><span>STATION 02</span><h2>Pay from shielded STRK.</h2><p>Ready or Xverse builds the privacy proof inside the wallet. The organizer receives an opaque note instead of your public wallet address.</p></header>
         <div className="eventBill">
           <div className="billMeta"><span>ADMISSION FOR</span><b>{eventOffer?.title ?? "Open an event QR"}</b></div>
           <dl>
@@ -387,13 +387,13 @@ export default function Home() {
             <div><dt>Total</dt><dd>{eventOffer?.amountText ?? "—"} STRK</dd></div>
           </dl>
           <button className="primary buyButton" onClick={buyPass} disabled={!eventOffer || tx.kind === "proving" || tx.kind === "submitted"}>
-            {!eventOffer ? "Scan an event first" : address ? "Pay privately & activate pass" : "Connect wallet & continue"}<span>↗</span>
+            {!eventOffer ? "Scan an event first" : address ? "Pay from shielded STRK" : "Connect wallet to pay"}<span>↗</span>
           </button>
           <div className={`status status-${tx.kind}`} role="status">
             {tx.kind === "idle" && "No transaction is prepared until you confirm."}
             {tx.kind === "proving" && tx.detail}
-            {tx.kind === "submitted" && <>Submitted · <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">{compact(tx.hash)}</a></>}
-            {tx.kind === "confirmed" && <>Pass active · <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">transaction {compact(tx.hash)}</a></>}
+            {tx.kind === "submitted" && <>Submitted / <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">{compact(tx.hash)}</a></>}
+            {tx.kind === "confirmed" && <>Pass active / <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">transaction {compact(tx.hash)}</a></>}
             {tx.kind === "error" && tx.detail}
           </div>
         </div>
@@ -410,7 +410,7 @@ export default function Home() {
 
       {activeStation === "gate" && (
       <section className="station station-gate">
-        <header><span>STATION 03</span><h2>Prove the pass. Not the person.</h2><p>A fresh challenge blocks screenshots and copied bearer codes. This MVP consumes passes locally on one gate device.</p></header>
+        <header><span>STATION 03</span><h2>Show control of the pass.</h2><p>Each gate challenge expires after five minutes. One gate browser stores the used-pass list in this version.</p></header>
         <div className="gateConsole">
           <div className="gateStep">
             <b>GATE</b><span>Issue a five-minute challenge</span>
@@ -426,7 +426,7 @@ export default function Home() {
             <small>{proofStatus}</small>
           </div>
           <div className="gateStep gateDecision">
-            <b>SCANNER</b><span>Verify device + event + payment + time</span>
+            <b>SCANNER</b><span>Check signature / event / payment / time</span>
             <button onClick={admit} disabled={!proofText || !gateChallenge}>Validate & admit</button>
             <div className={gateResult.startsWith("ADMIT") ? "admitSignal active" : "admitSignal"}>{gateResult.startsWith("ADMIT") ? "ADMIT" : "HOLD"}</div>
             <p role="status">{gateResult || "Waiting for a fresh signed proof."}</p>
@@ -436,15 +436,15 @@ export default function Home() {
       )}
 
       <section className="truthSection">
-        <div><span>HIDDEN</span><h2>Attendee wallet<br />Private balance<br />Organizer link</h2></div>
-        <div><span>PUBLIC</span><h2>Helper · token · amount<br />time · opaque commitments</h2></div>
-        <p>Mosby Pass does not hide faces, IP addresses, device fingerprints, transaction amounts or timing. The browser-held key is an MVP credential, not a hardware-backed passkey. Multi-gate replay protection requires an organizer-operated private gate service.</p>
+        <div><span>THE ORGANIZER DOES NOT RECEIVE</span><h2>Attendee wallet<br />Private balance<br />Wallet-payment link</h2></div>
+        <div><span>VISIBLE ON STARKNET</span><h2>Helper / token / amount<br />time / opaque commitments</h2></div>
+        <p>Faces, IP addresses, device fingerprints, amounts and timing remain visible outside the wallet privacy flow. The browser key can be exported. A production deployment needs a private gate service to stop pass reuse across several scanners.</p>
       </section>
 
       <footer>
         <span>MOSBY PASS / PRIVATE EVENT ADMISSION</span>
         <a href={`https://voyager.online/contract/${HELPER}`} target="_blank" rel="noreferrer">MAINNET HELPER {compact(HELPER)} ↗</a>
-        <span>NO VIEWING KEY IN THE DAPP</span>
+        <span>VIEWING KEY STAYS IN THE WALLET</span>
       </footer>
 
       {walletPicker && (
@@ -453,14 +453,14 @@ export default function Home() {
             <button className="modalClose" onClick={() => setWalletPicker(false)} aria-label="Close">×</button>
             <div className="eyebrow">WALLET API V6</div>
             <h2 id="wallet-dialog-title">Select a privacy wallet</h2>
-            <p>Ready and Xverse expose STRK20 actions while keeping the viewing key inside the wallet.</p>
+            <p>Ready and Xverse build the STRK20 transaction. The viewing key stays inside the wallet.</p>
             <div className="walletList">
               {wallets.length ? wallets.map((wallet) => (
                 <button key={wallet.name} onClick={() => connect(wallet)}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={wallet.icon} alt="" /><span>{wallet.name}</span><b>Connect ↗</b>
                 </button>
-              )) : <div className="noWallet">No compatible privacy wallet was discovered in this browser.</div>}
+              )) : <div className="noWallet">This browser found no compatible privacy wallet.</div>}
             </div>
           </div>
         </div>
