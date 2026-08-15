@@ -20,7 +20,7 @@ pretend recurring private billing exists before it does.
 | Dependency audit | 0 known vulnerabilities |
 | Independent audit checkpoint | No retained P1 or P2 finding |
 | Mainnet helper | Not deployed |
-| Public demo | Not deployed |
+| Public demo | [Live on GitHub Pages](https://welttowelt.github.io/veilpass/) |
 
 The repository only calls something complete after it has been checked. Mainnet
 addresses and transaction hashes stay empty until they exist.
