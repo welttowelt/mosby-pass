@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.env.local
+.snfoundry_cache/
+.next/
+.playwright-cli/
+node_modules/
+out/
+output/
+target/
+*.tsbuildinfo
