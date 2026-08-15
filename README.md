@@ -115,6 +115,13 @@ cd web
 node --test tests/*.test.mjs
 ```
 
+Before declaration, reproduce every source hash, contract artifact, test, and
+production client build in one pass.
+
+```bash
+./scripts/verify-release.sh
+```
+
 ## Mainnet gate
 
 The sprint requires a public demo, a three-minute video, and at least three

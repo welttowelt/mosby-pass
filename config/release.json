@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-08-15T08:20:00Z",
+  "toolchain": {
+    "scarb": "2.14.0",
+    "starknet_foundry": "0.55.0",
+    "next": "16.3.1",
+    "starknet_js": "10.4.0"
+  },
+  "sources": {
+    "src/lib.cairo": "7c5970f4c599d98b3f72524b06215de367a5c29262f6b574ad9b637471490db5",
+    "tests/test_veilpass.cairo": "3d523fe922fc53bd78e44dca04bac62d98ad5c05475ce56c7e4683b8fe610376",
+    "Scarb.toml": "36eec1a26e292b54fce4ef807f2be4d969372a51bd1ce7db2a6e6728455681c0",
+    "web/src/app/page.tsx": "6c94dac08e0c043383a1278270bf46f0a692e44c5cfb2f740b61ef5358daa271",
+    "web/src/lib/veilpass-actions.mjs": "f10bc2b7abcfb8a4efc882b5d8df9972b4d6ff304ed1f3ab3394c8194221fc2a",
+    "web/package.json": "53ecba660bb39d7b2f2929d9ef5e22080229646622cee1661fe4790b949bf5a3",
+    "web/package-lock.json": "2cb00aa03d8d3d515893f9978a0aa7f2a04aeb2fa41f88e7fa2c0b879e41c303"
+  },
+  "artifacts": {
+    "sierra": {
+      "path": "target/dev/veilpass_Veilpass.contract_class.json",
+      "sha256": "c16dba3e12ae8863ab514585590db77aed6c9950719a4a75072143b876154c79",
+      "class_hash": "0x0259f051e136da4fed7e5f4cbf51aa39a5b79f04c656b761471ada1f805aa174"
+    },
+    "compiled": {
+      "path": "target/dev/veilpass_Veilpass.compiled_contract_class.json",
+      "sha256": "4c9219814c4003cf5841826bdfafdebc993befc46a08591a549ea8bbaa1b9e10",
+      "class_hash": "0x068af6a1c2b76f9152195946a118d63da82d1592c3aa441d406c253bd2b2aff6"
+    }
+  }
+}
