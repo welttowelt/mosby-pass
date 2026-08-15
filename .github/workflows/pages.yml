@@ -32,7 +32,7 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_STARKNET_RPC_URL: ${{ vars.STARKNET_RPC_URL || 'https://rpc.starknet.lava.build' }}
-          NEXT_PUBLIC_VEILPASS_HELPER: ${{ vars.VEILPASS_HELPER || '0x0' }}
+          NEXT_PUBLIC_VEILPASS_HELPER: ${{ vars.VEILPASS_HELPER || '0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6' }}
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: web/out

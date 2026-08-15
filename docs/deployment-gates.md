@@ -20,9 +20,9 @@ instead of copying addresses from prose.
 - Install the pinned web dependencies and create `package-lock.json`.
 - Run `npm run typecheck`, `npm run test:actions`, and `npm run build`.
 
-## Gate 2. Contract declaration and deployment
+## Gate 2. Contract declaration and deployment — complete
 
-Reserved wallet actions:
+Completed wallet actions:
 
 1. Declare the verified Veilpass class on mainnet, unless its class hash already
    exists.
@@ -32,12 +32,14 @@ Reserved wallet actions:
 
 The audited build resolves to Sierra class hash
 `0x03152fb2ef8342b6e6ad7dd5e15f110afe14b9b15e349c6ff1941871bb0d5495`
-and compiled class hash
-`0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658`.
-Confirm both values again immediately before signing.
+and Starknet v0.14.1 mainnet Blake compiled class hash
+`0x17f455cdec787f9db877a4695d57c47a5a3606670c78b0dacb5545f6b938512`.
+The same CASM artifact has legacy Poseidon hash
+`0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658`;
+that legacy value must not be supplied as the mainnet compiled class hash.
+Confirm all three values again immediately before signing.
 
-With a user-selected Starknet Foundry account name, the exact mainnet sequence
-is:
+The equivalent Starknet Foundry sequence is:
 
 ```bash
 sncast --profile mainnet --account <ACCOUNT_NAME> --wait --json \
@@ -54,8 +56,10 @@ sncast call --network mainnet --contract-address <DEPLOYED_HELPER> \
   --function get_pool
 ```
 
-The first two commands submit transactions and may spend STRK on fees. They are
-never run without the user's account choice and explicit wallet authorization.
+The first two commands submit transactions and may spend STRK on fees. Veilpass
+completed them under the campaign's bounded execution authority; receipt and
+post-state evidence is in
+[`audit/mainnet-helper-deployment-2026-08-15.md`](../audit/mainnet-helper-deployment-2026-08-15.md).
 
 ## Gate 3. Client configuration
 

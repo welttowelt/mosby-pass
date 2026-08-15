@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-15T08:51:10Z",
+  "as_of": "2026-08-15T10:27:46Z",
   "toolchain": {
     "scarb": "2.14.0",
     "starknet_foundry": "0.55.0",
@@ -10,7 +10,7 @@
     "src/lib.cairo": "2185e59c8f2c8a0065e96f2ef416cf1afcee935411c0151d011676ef1d48aac7",
     "tests/test_veilpass.cairo": "a53a6c3803784fef31e6b59afb88ca18ac9ba3facfe5d4562fe69b57cb66a7f5",
     "Scarb.toml": "36eec1a26e292b54fce4ef807f2be4d969372a51bd1ce7db2a6e6728455681c0",
-    "web/src/app/page.tsx": "4c524990f068151bf43ac78ce099f4ea1ecde7bd45b9fa0b193ef83272d3d93f",
+    "web/src/app/page.tsx": "b69de00c93307879c23513248573e10fddd41225c590e3fd7ca93370df7ad75f",
     "web/src/app/globals.css": "2e3d1be002c872f9440b88d19ca6ff0bb736427600ed0d892abbac9774a20add",
     "web/src/lib/veilpass-actions.mjs": "780a9c03364bd291479ff76f299936881e85738d9ecefbf7cb28b03bd0f796e0",
     "web/src/lib/veilpass-actions.d.mts": "153f6cbc0c1f18e0191e127b0e51b43ada3264a9a480554b169824ddd08d2f63",
@@ -31,7 +31,8 @@
     "compiled": {
       "path": "target/dev/veilpass_Veilpass.compiled_contract_class.json",
       "sha256": "0d99f4956bc3e291ceb29312fa0125b4e09f91a18d0efc8cdbfeb61b280e449e",
-      "class_hash": "0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658"
+      "legacy_poseidon_class_hash": "0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658",
+      "mainnet_blake_class_hash": "0x17f455cdec787f9db877a4695d57c47a5a3606670c78b0dacb5545f6b938512"
     }
   }
 }

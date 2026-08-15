@@ -1,12 +1,13 @@
 {
-  "as_of": "2026-08-15T08:51:10Z",
+  "as_of": "2026-08-15T10:27:46Z",
   "chain_id": "SN_MAIN",
   "rpc_url": "https://rpc.starknet.lava.build",
   "pool_address": "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
   "pool_class_hash_at_block_13321905": "0x67dddd89d80fedadc06b6f160798f94800a4a70164e5a24301cd0d6076b554d",
   "strk_token": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
   "expected_veilpass_class_hash": "0x03152fb2ef8342b6e6ad7dd5e15f110afe14b9b15e349c6ff1941871bb0d5495",
-  "expected_veilpass_compiled_class_hash": "0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658",
-  "veilpass_helper": null,
+  "expected_veilpass_compiled_class_hash": "0x17f455cdec787f9db877a4695d57c47a5a3606670c78b0dacb5545f6b938512",
+  "legacy_poseidon_compiled_class_hash": "0x002a860c68ea0b96e30f5a4f536ca2c4e394f28abdb42b4822ea8158a44e1658",
+  "veilpass_helper": "0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6",
   "source": "https://github.com/starkience/strk20-hackathon/blob/main/docs/MAINNET-DAY-0.md"
 }

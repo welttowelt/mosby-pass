@@ -19,7 +19,7 @@ pretend recurring private billing exists before it does.
 | Static client | Typecheck and production build pass |
 | Dependency audit | 0 known vulnerabilities |
 | Security checkpoint | No retained high-severity finding in the current delta review |
-| Mainnet helper | Not deployed |
+| Mainnet helper | [Deployed](https://voyager.online/contract/0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6) |
 | Public demo | [Live on GitHub Pages](https://welttowelt.github.io/veilpass/) |
 
 The repository only calls something complete after it has been checked. Mainnet
@@ -151,11 +151,13 @@ production client build in one pass.
 ## Mainnet gate
 
 The sprint requires a public demo, a three-minute video, and at least three
-successful mainnet transactions that touch the STRK20 pool. Those hashes will go
-into `strk20.json` after the wallet confirms them.
+successful mainnet transactions that touch the STRK20 pool. The execution
+account is registered and the audited helper is live. One qualifying pool
+transaction is recorded in `strk20.json`; two product-flow transactions and the
+video remain.
 
-Deployment and membership transactions spend funds and require an explicit
-wallet confirmation. No script in this repository holds a private key.
+Membership transactions spend funds and require bounded execution authority.
+No script in this repository holds a private key.
 
 ## Built from public interfaces
 

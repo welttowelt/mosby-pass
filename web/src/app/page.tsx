@@ -28,7 +28,9 @@ const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
 const RPC_URL =
   process.env.NEXT_PUBLIC_STARKNET_RPC_URL ??
   "https://starknet-mainnet.public.blastapi.io/rpc/v0_10";
-const HELPER = process.env.NEXT_PUBLIC_VEILPASS_HELPER ?? "0x0";
+const HELPER =
+  process.env.NEXT_PUBLIC_VEILPASS_HELPER ??
+  "0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6";
 const provider = new RpcProvider({ nodeUrl: RPC_URL });
 
 type TxState =

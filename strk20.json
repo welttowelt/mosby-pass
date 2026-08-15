@@ -2,6 +2,8 @@
   "transactions": [
     "0x12bad0ed32d90bbde43d0579624e1bae3585ce1a7f6d4081a7296f099fe1103"
   ],
-  "contracts": [],
+  "contracts": [
+    "0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6"
+  ],
   "demo_url": "https://welttowelt.github.io/veilpass/"
 }
