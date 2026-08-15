@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-15T10:27:46Z",
+  "as_of": "2026-08-15T11:15:16Z",
   "toolchain": {
     "scarb": "2.14.0",
     "starknet_foundry": "0.55.0",
@@ -10,17 +10,19 @@
     "src/lib.cairo": "2185e59c8f2c8a0065e96f2ef416cf1afcee935411c0151d011676ef1d48aac7",
     "tests/test_veilpass.cairo": "a53a6c3803784fef31e6b59afb88ca18ac9ba3facfe5d4562fe69b57cb66a7f5",
     "Scarb.toml": "36eec1a26e292b54fce4ef807f2be4d969372a51bd1ce7db2a6e6728455681c0",
-    "web/src/app/page.tsx": "b69de00c93307879c23513248573e10fddd41225c590e3fd7ca93370df7ad75f",
-    "web/src/app/globals.css": "2e3d1be002c872f9440b88d19ca6ff0bb736427600ed0d892abbac9774a20add",
-    "web/src/lib/veilpass-actions.mjs": "780a9c03364bd291479ff76f299936881e85738d9ecefbf7cb28b03bd0f796e0",
-    "web/src/lib/veilpass-actions.d.mts": "153f6cbc0c1f18e0191e127b0e51b43ada3264a9a480554b169824ddd08d2f63",
+    "web/src/app/page.tsx": "905f50ec5bab5a423aa76dfd67ef6ba89db0ab5ead250045e779448eeb4278e6",
+    "web/src/app/globals.css": "db5c5182ba201b531a0942493b00fc391442edea4795ed0657ade33eded65c85",
+    "web/src/lib/veilpass-actions.mjs": "905e8cf499e56ab3d39035a975da664033fc5451c563b3445126278fd729b74a",
+    "web/src/lib/veilpass-actions.d.mts": "4208b276715feab0c35e9d27370fa79233dbd10047a6eada490558402edfcd16",
+    "web/src/lib/event-pass.mjs": "c3162856ef2e341cde8c01741962acb88affef55c24705cd61b8ef4c02402aa3",
+    "web/src/lib/event-pass.d.mts": "d6570ec0ac2d63f3a734fac49f792d0e0f78db1105de098daae1bc296edcb6f4",
     "web/src/lib/verify-membership.mjs": "1d9b30205a30771cc7cf6ff695bef7a3d540bfc8abcb10424a141d1bf0b51e60",
     "web/src/lib/verify-membership.d.mts": "1d359e3b7d1f348d923a7a4222626f11597bf84b2163b4579106fe39c125e4c1",
-    "web/tests/veilpass-actions.test.mjs": "1dd391a7f0e88397d08fd168c4ee88b1f8e197f55de15183c48b5ed8aa004523",
+    "web/tests/veilpass-actions.test.mjs": "ce1a5236bb2d212dbb246328cdddfb640e70322d0e620bd5f1b201d258870993",
     "web/tests/verify-membership.test.mjs": "22ca29a8665c6d1cffbc9a279b800f66611be51aba648eab622e72d2fb345088",
-    "web/next.config.mjs": "3d374416b4aba598860253541d490eacd5e690fc3ee937077c01f56ffa6c004f",
-    "web/package.json": "53ecba660bb39d7b2f2929d9ef5e22080229646622cee1661fe4790b949bf5a3",
-    "web/package-lock.json": "2cb00aa03d8d3d515893f9978a0aa7f2a04aeb2fa41f88e7fa2c0b879e41c303"
+    "web/next.config.mjs": "1cd4f6b10c5ce890936defdaaa45c5b0e50aceca56048f3e2dd4377547f411fe",
+    "web/package.json": "cb0c89015319cc09e838c4e946aaaacd7194b9ac6b3498c92d80eb116c9dd1d4",
+    "web/package-lock.json": "5d2b9c1c796ba95d003d49c13ec26723b56fc6722acc0fdbd92d9661423a09ca"
   },
   "artifacts": {
     "sierra": {

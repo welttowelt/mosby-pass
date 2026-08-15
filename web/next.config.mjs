@@ -7,8 +7,8 @@ const nextConfig = {
   outputFileTracingRoot: process.cwd(),
   trailingSlash: true,
   images: { unoptimized: true },
-  basePath: onGitHub ? "/veilpass" : "",
-  assetPrefix: onGitHub ? "/veilpass/" : "",
+  basePath: onGitHub ? "/mosby-pass" : "",
+  assetPrefix: onGitHub ? "/mosby-pass/" : "",
 };
 
 export default nextConfig;

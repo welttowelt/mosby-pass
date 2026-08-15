@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ ! -f "${repo_root}/Scarb.toml" || ! -f "${repo_root}/config/release.json" ]]; then
-  echo "release verifier could not resolve the Veilpass repository" >&2
+  echo "release verifier could not resolve the Mosby Pass repository" >&2
   exit 1
 fi
 

@@ -1,7 +1,7 @@
 export const OPEN_NOTE_PLACEHOLDER = "${openNoteIds[0]}";
 export const LAST_PASS_KEY = "veilpass:last-pass";
 export const PENDING_PASS_KEY = "veilpass:pending-pass";
-export const OFFER_DURATIONS = [7, 30, 90, 365];
+const OFFER_DURATIONS = [7, 30, 90, 365];
 
 export function parseTokenAmount(value, decimals = 18) {
   const normalized = value.trim();
@@ -60,14 +60,23 @@ export function parseStoredPass(value) {
     if (
       typeof parsed !== "object" ||
       parsed === null ||
-      typeof parsed.secret !== "string" ||
-      !felt.test(parsed.secret) ||
+      typeof parsed.publicKey !== "object" ||
+      parsed.publicKey === null ||
+      typeof parsed.privateKey !== "object" ||
+      parsed.privateKey === null ||
+      typeof parsed.keyFelt !== "string" ||
+      !felt.test(parsed.keyFelt) ||
       typeof parsed.commitment !== "string" ||
       !felt.test(parsed.commitment) ||
       typeof parsed.offerCommitment !== "string" ||
       !felt.test(parsed.offerCommitment) ||
-      !Number.isSafeInteger(parsed.expiry) ||
-      parsed.expiry <= 0 ||
+      typeof parsed.eventTitle !== "string" ||
+      !parsed.eventTitle.trim() ||
+      typeof parsed.venue !== "string" ||
+      !parsed.venue.trim() ||
+      !Number.isSafeInteger(parsed.startsAt) ||
+      !Number.isSafeInteger(parsed.closesAt) ||
+      parsed.closesAt <= parsed.startsAt ||
       typeof parsed.transactionHash !== "string" ||
       (parsed.transactionHash !== "" && !felt.test(parsed.transactionHash))
     ) return undefined;
@@ -77,7 +86,7 @@ export function parseStoredPass(value) {
   }
 }
 
-export function buildMembershipActions({
+export function buildAdmissionActions({
   token,
   helper,
   creator,
@@ -104,3 +113,7 @@ export function buildMembershipActions({
     },
   ];
 }
+
+// The deployed helper's ABI retains membership-era names. Keep this alias so
+// older integrators can migrate without changing the atomic STRK20 action.
+export const buildMembershipActions = buildAdmissionActions;

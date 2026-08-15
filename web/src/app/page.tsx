@@ -1,37 +1,40 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { createStore, type Store } from "@starknet-io/get-starknet-discovery";
 import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-wallet-standard/features";
 import type { WALLET_API } from "@starknet-io/types-js";
-import {
-  RpcProvider,
-  WalletAccountV6,
-  constants,
-  hash,
-  num,
-  validateAndParseAddress,
-  walletV6,
-} from "starknet";
+import { RpcProvider, WalletAccountV6, constants, num, validateAndParseAddress, walletV6 } from "starknet";
 import {
   LAST_PASS_KEY,
   PENDING_PASS_KEY,
-  buildOfferUrl,
-  buildMembershipActions,
-  parseOfferParams,
+  buildAdmissionActions,
   parseStoredPass,
   parseTokenAmount,
 } from "../lib/veilpass-actions.mjs";
 import type { StoredPass } from "../lib/veilpass-actions.mjs";
+import {
+  buildEventOfferUrl,
+  createGateChallenge,
+  generateAdmissionCredential,
+  parseEventOffer,
+  signGateChallenge,
+  verifyGateProof,
+} from "../lib/event-pass.mjs";
+import type { EventOffer, GateChallenge } from "../lib/event-pass.mjs";
 
 const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-const RPC_URL =
-  process.env.NEXT_PUBLIC_STARKNET_RPC_URL ??
-  "https://starknet-mainnet.public.blastapi.io/rpc/v0_10";
-const HELPER =
-  process.env.NEXT_PUBLIC_VEILPASS_HELPER ??
-  "0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6";
+const RPC_URL = process.env.NEXT_PUBLIC_STARKNET_RPC_URL ?? "https://starknet-mainnet.public.blastapi.io/rpc/v0_10";
+const HELPER = process.env.NEXT_PUBLIC_VEILPASS_HELPER ?? "0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6";
+const MAX_DURATION_SECONDS = 366 * 24 * 60 * 60;
 const provider = new RpcProvider({ nodeUrl: RPC_URL });
+const STATIONS = [
+  { id: "organizer", number: "01", name: "Organizer desk", detail: "Create event QR" },
+  { id: "attendee", number: "02", name: "Attendee pass", detail: "Shielded STRK → pass" },
+  { id: "gate", number: "03", name: "Gate scanner", detail: "Challenge → admit once" },
+] as const;
+type StationId = (typeof STATIONS)[number]["id"];
 
 type TxState =
   | { kind: "idle" }
@@ -40,34 +43,29 @@ type TxState =
   | { kind: "confirmed"; hash: string }
   | { kind: "error"; detail: string };
 
-type Pass = StoredPass;
-
 function compact(value: string): string {
-  return value.length < 16 ? value : `${value.slice(0, 8)}…${value.slice(-5)}`;
+  return value.length < 18 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`;
 }
 
-function freshSecret(): string {
+function randomFelt(): string {
   const bytes = new Uint8Array(30);
   crypto.getRandomValues(bytes);
   if (bytes.every((byte) => byte === 0)) bytes[0] = 1;
   return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function commitmentFor(secret: string): string {
-  return num.toHex(hash.computePoseidonHashOnElements([secret]));
-}
-
-function offerCommitmentFor(
-  creator: string,
-  amount: bigint,
-  days: number,
-  nonce: string,
-): string {
-  return num.toHex(hash.computePoseidonHashOnElements([creator, amount, days, nonce]));
+function localDateTime(seconds: number): string {
+  const date = new Date(seconds * 1000);
+  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 16);
 }
 
 function normalizeWalletName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+async function qrFor(value: string): Promise<string> {
+  return QRCode.toDataURL(value, { width: 360, margin: 1, color: { dark: "#11110f", light: "#f4f0e6" } });
 }
 
 export default function Home() {
@@ -76,43 +74,57 @@ export default function Home() {
   const [walletAccount, setWalletAccount] = useState<WalletAccountV6>();
   const [address, setAddress] = useState("");
   const [chainId, setChainId] = useState("");
-  const [creator, setCreator] = useState("");
+  const [title, setTitle] = useState("Midnight Assembly");
+  const [venue, setVenue] = useState("Hall 20 · Berlin");
+  const [organizer, setOrganizer] = useState("");
   const [amount, setAmount] = useState("0.1");
-  const [days, setDays] = useState(30);
-  const [offerNonce, setOfferNonce] = useState("");
-  const [offerLocked, setOfferLocked] = useState(false);
+  const [startsInput, setStartsInput] = useState("");
+  const [closesInput, setClosesInput] = useState("");
+  const [eventOffer, setEventOffer] = useState<EventOffer>();
   const [offerLink, setOfferLink] = useState("");
-  const [offerStatus, setOfferStatus] = useState("");
+  const [offerQr, setOfferQr] = useState("");
+  const [offerStatus, setOfferStatus] = useState("No transaction is prepared while creating an event.");
   const [tx, setTx] = useState<TxState>({ kind: "idle" });
-  const [pass, setPass] = useState<Pass>();
-  const [passInput, setPassInput] = useState("");
-  const [accessResult, setAccessResult] = useState("");
+  const [pass, setPass] = useState<StoredPass>();
+  const [gateChallenge, setGateChallenge] = useState<GateChallenge>();
+  const [challengeText, setChallengeText] = useState("");
+  const [challengeQr, setChallengeQr] = useState("");
+  const [proofText, setProofText] = useState("");
+  const [proofQr, setProofQr] = useState("");
+  const [gateResult, setGateResult] = useState("");
+  const [proofStatus, setProofStatus] = useState("");
+  const [activeStation, setActiveStation] = useState<StationId>("organizer");
 
   useEffect(() => {
-    const store: Store = createStore({ eip1193Adapters: [] });
-    const update = (next: WalletWithStarknetFeatures[]) => {
-      setWallets(next.filter((wallet) => {
-        const name = normalizeWalletName(wallet.name);
-        return name.includes("ready") || name.includes("xverse");
-      }));
-    };
-    update(store.getWallets());
-    const unsubscribe = store.subscribe((next) => update(next.slice()));
-    return unsubscribe;
+    const now = Math.floor(Date.now() / 1000);
+    setStartsInput(localDateTime(now + 24 * 60 * 60));
+    setClosesInput(localDateTime(now + 27 * 60 * 60));
+    const loaded = parseEventOffer(window.location.search, (value) => validateAndParseAddress(value ?? ""), parseTokenAmount);
+    if (!loaded) {
+      if (window.location.search) setOfferStatus("This event link is incomplete or invalid.");
+      return;
+    }
+    setEventOffer(loaded);
+    setActiveStation("attendee");
+    setTitle(loaded.title);
+    setVenue(loaded.venue);
+    setOrganizer(loaded.organizer);
+    setAmount(loaded.amountText);
+    setStartsInput(localDateTime(loaded.startsAt));
+    setClosesInput(localDateTime(loaded.closesAt));
+    setOfferLink(window.location.href);
+    setOfferStatus("Event loaded. Price, recipient, venue and admission window are cryptographically bound.");
   }, []);
 
   useEffect(() => {
-    const loadedOffer = parseOfferParams(window.location.search, validateAndParseAddress);
-    if (!loadedOffer) {
-      if (window.location.search) setOfferStatus("This creator offer link is incomplete or invalid.");
-      return;
-    }
-    setCreator(loadedOffer.creator);
-    setAmount(loadedOffer.amount);
-    setDays(loadedOffer.days);
-    setOfferNonce(loadedOffer.nonce);
-    setOfferLocked(true);
-    setOfferStatus("Creator offer loaded. Its price, term, and recipient are locked for this pass.");
+    const store: Store = createStore({ eip1193Adapters: [] });
+    const update = (next: WalletWithStarknetFeatures[]) => setWallets(next.filter((wallet) => {
+      const name = normalizeWalletName(wallet.name);
+      return name.includes("ready") || name.includes("xverse");
+    }));
+    update(store.getWallets());
+    const unsubscribe = store.subscribe((next) => update(next.slice()));
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -120,66 +132,54 @@ export default function Home() {
     const previous = parseStoredPass(localStorage.getItem(LAST_PASS_KEY));
     const recovered = pending ?? previous;
     if (!recovered) return;
-
     setPass(recovered);
-    setPassInput(recovered.secret);
     if (!pending) return;
     if (!pending.transactionHash) {
-      setTx({
-        kind: "error",
-        detail: "Recovered an unused pass secret from an interrupted wallet request. Start a new membership when ready.",
-      });
+      setTx({ kind: "error", detail: "Recovered an unused device key from an interrupted wallet request. Start again when ready." });
       return;
     }
-
     let cancelled = false;
     setTx({ kind: "submitted", hash: pending.transactionHash });
-    provider.waitForTransaction(pending.transactionHash, { retries: 400, retryInterval: 3000 })
-      .then((receipt) => {
-        if (cancelled) return;
-        if ("execution_status" in receipt && receipt.execution_status === "REVERTED") {
-          setTx({ kind: "error", detail: "The recovered transaction reverted on Starknet." });
-          return;
-        }
-        localStorage.setItem(LAST_PASS_KEY, JSON.stringify(pending));
-        localStorage.removeItem(PENDING_PASS_KEY);
-        setTx({ kind: "confirmed", hash: pending.transactionHash });
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setTx({
-            kind: "error",
-            detail: `Could not refresh transaction status. Your pass secret is still stored locally. ${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
-      });
+    provider.waitForTransaction(pending.transactionHash, { retries: 400, retryInterval: 3000 }).then((receipt) => {
+      if (cancelled) return;
+      if ("execution_status" in receipt && receipt.execution_status === "REVERTED") {
+        setTx({ kind: "error", detail: "The recovered transaction reverted on Starknet." });
+        return;
+      }
+      localStorage.setItem(LAST_PASS_KEY, JSON.stringify(pending));
+      localStorage.removeItem(PENDING_PASS_KEY);
+      setTx({ kind: "confirmed", hash: pending.transactionHash });
+    }).catch((error) => {
+      if (!cancelled) setTx({ kind: "error", detail: `Could not refresh the transaction. The device key remains local. ${String(error)}` });
+    });
     return () => { cancelled = true; };
   }, []);
 
-  const helperReady = useMemo(() => {
-    try {
-      return num.toBigInt(HELPER) !== 0n;
-    } catch {
-      return false;
-    }
-  }, []);
+  useEffect(() => { if (offerLink) void qrFor(offerLink).then(setOfferQr); }, [offerLink]);
+  useEffect(() => { if (challengeText) void qrFor(challengeText).then(setChallengeQr); }, [challengeText]);
+  useEffect(() => { if (proofText) void qrFor(proofText).then(setProofQr); }, [proofText]);
 
+  const helperReady = useMemo(() => {
+    try { return num.toBigInt(HELPER) !== 0n; } catch { return false; }
+  }, []);
   const isMainnet = chainId === constants.StarknetChainId.SN_MAIN;
+  const eventLocked = Boolean(eventOffer);
+  const orderedStations = [
+    ...STATIONS.filter((station) => station.id !== activeStation),
+    ...STATIONS.filter((station) => station.id === activeStation),
+  ];
 
   async function connect(wallet: WalletWithStarknetFeatures) {
     setTx({ kind: "idle" });
     try {
       const account = await WalletAccountV6.connect(provider, wallet);
       const accounts = await walletV6.requestAccounts(wallet);
-      if (!Array.isArray(accounts) || !accounts[0]) {
-        throw new Error("This wallet did not return a Starknet account.");
-      }
+      if (!Array.isArray(accounts) || !accounts[0]) throw new Error("This wallet did not return a Starknet account.");
       const connectedAddress = validateAndParseAddress(accounts[0]);
-      const connectedChain = (await walletV6.requestChainId(wallet)) as string;
       setWalletAccount(account);
       setAddress(connectedAddress);
-      if (!offerLocked) setCreator(connectedAddress);
-      setChainId(connectedChain);
+      setChainId(await walletV6.requestChainId(wallet) as string);
+      if (!eventLocked) setOrganizer(connectedAddress);
       setWalletPicker(false);
     } catch (error) {
       setTx({ kind: "error", detail: error instanceof Error ? error.message : String(error) });
@@ -188,263 +188,262 @@ export default function Home() {
 
   async function createOffer() {
     try {
-      const creatorAddress = validateAndParseAddress(creator);
+      const organizerAddress = validateAndParseAddress(organizer);
       parseTokenAmount(amount);
-      const nonce = freshSecret();
-      const link = buildOfferUrl({
+      const startsAt = Math.floor(new Date(startsInput).getTime() / 1000);
+      const closesAt = Math.floor(new Date(closesInput).getTime() / 1000);
+      if (!Number.isSafeInteger(startsAt) || !Number.isSafeInteger(closesAt)) throw new Error("Choose a valid event window.");
+      if (closesAt <= Math.floor(Date.now() / 1000)) throw new Error("The admission window must close in the future.");
+      if (closesAt - Math.floor(Date.now() / 1000) > MAX_DURATION_SECONDS) throw new Error("The helper supports events up to 366 days away.");
+      const link = buildEventOfferUrl({
         baseUrl: `${window.location.origin}${window.location.pathname}`,
-        creator: creatorAddress,
+        organizer: organizerAddress,
         amount,
-        days,
-        nonce,
+        title,
+        venue,
+        startsAt,
+        closesAt,
+        nonce: randomFelt(),
       });
-      setOfferNonce(nonce);
+      const parsed = parseEventOffer(
+        new URL(link).search,
+        (value) => validateAndParseAddress(value ?? ""),
+        parseTokenAmount,
+      );
+      if (!parsed) throw new Error("Could not encode the event offer.");
+      setEventOffer(parsed);
       setOfferLink(link);
-      setOfferStatus("Offer ready. Open the subscriber view before making a membership payment.");
-      try {
-        await navigator.clipboard.writeText(link);
-        setOfferStatus("Creator offer link copied. Open the subscriber view before making a payment.");
-      } catch {
-        setOfferStatus("Offer ready. Copy the displayed link manually.");
-      }
+      setOfferStatus("Event QR ready. It carries public terms, not an attendee identity.");
+      try { await navigator.clipboard.writeText(link); } catch { /* Manual copy remains available. */ }
     } catch (error) {
       setOfferStatus(error instanceof Error ? error.message : String(error));
     }
   }
 
-  async function join() {
-    if (!walletAccount || !address) {
-      setWalletPicker(true);
-      return;
-    }
+  async function buyPass() {
+    if (!walletAccount || !address) { setWalletPicker(true); return; }
     try {
       if (!isMainnet) throw new Error("Switch the connected wallet to Starknet mainnet.");
-      if (!helperReady) throw new Error("The mainnet helper address has not been configured yet.");
-      if (!offerLocked || !offerNonce) throw new Error("Open a creator offer link before subscribing.");
-      const creatorAddress = validateAndParseAddress(creator);
-      const rawAmount = parseTokenAmount(amount);
-      const secret = freshSecret();
-      const commitment = commitmentFor(secret);
-      const offerCommitment = offerCommitmentFor(creatorAddress, rawAmount, days, offerNonce);
-      const durationSeconds = days * 24 * 60 * 60;
-      const expiry = Math.floor(Date.now() / 1000) + durationSeconds;
-      const helper = num.toHex(HELPER);
-      const actions = buildMembershipActions({
+      if (!helperReady) throw new Error("The mainnet helper is not configured.");
+      if (!eventOffer) throw new Error("Open an organizer event link first.");
+      const now = Math.floor(Date.now() / 1000);
+      const durationSeconds = eventOffer.closesAt - now;
+      if (durationSeconds <= 0 || durationSeconds > MAX_DURATION_SECONDS) throw new Error("This event is outside the helper admission window.");
+      const credential = await generateAdmissionCredential();
+      const pendingPass: StoredPass = {
+        ...credential,
+        offerCommitment: eventOffer.commitment,
+        eventTitle: eventOffer.title,
+        venue: eventOffer.venue,
+        startsAt: eventOffer.startsAt,
+        closesAt: eventOffer.closesAt,
+        transactionHash: "",
+      };
+      localStorage.setItem(PENDING_PASS_KEY, JSON.stringify(pendingPass));
+      setPass(pendingPass);
+      const actions = buildAdmissionActions({
         token: STRK,
-        helper,
-        creator: creatorAddress,
-        amount: rawAmount,
-        commitment,
-        offerCommitment,
+        helper: num.toHex(HELPER),
+        creator: eventOffer.organizer,
+        amount: eventOffer.amount,
+        commitment: credential.commitment,
+        offerCommitment: eventOffer.commitment,
         durationSeconds,
         toHex: num.toHex,
       }) as WALLET_API.STRK20_ACTION[];
-
-      const pendingPass = { secret, commitment, offerCommitment, expiry, transactionHash: "" };
-      localStorage.setItem(PENDING_PASS_KEY, JSON.stringify(pendingPass));
-      setPass(pendingPass);
-      setPassInput(secret);
-
-      setTx({ kind: "proving", detail: "Approve in your wallet. Private proof generation can take around 30 seconds." });
+      setTx({ kind: "proving", detail: "Approve in your wallet. The privacy proof can take around 30 seconds." });
       const response = await walletAccount.strk20InvokeTransaction(actions);
-      const transactionHash = response.transaction_hash;
-      const submittedPass = { ...pendingPass, transactionHash };
+      const submittedPass = { ...pendingPass, transactionHash: response.transaction_hash };
       localStorage.setItem(PENDING_PASS_KEY, JSON.stringify(submittedPass));
       setPass(submittedPass);
-      setTx({ kind: "submitted", hash: transactionHash });
-      const receipt = await provider.waitForTransaction(transactionHash, {
-        retries: 400,
-        retryInterval: 3000,
-      });
-      if ("execution_status" in receipt && receipt.execution_status === "REVERTED") {
-        throw new Error("The transaction reverted on Starknet.");
-      }
-      const nextPass = submittedPass;
-      localStorage.setItem(LAST_PASS_KEY, JSON.stringify(nextPass));
+      setTx({ kind: "submitted", hash: response.transaction_hash });
+      const receipt = await provider.waitForTransaction(response.transaction_hash, { retries: 400, retryInterval: 3000 });
+      if ("execution_status" in receipt && receipt.execution_status === "REVERTED") throw new Error("The transaction reverted on Starknet.");
+      localStorage.setItem(LAST_PASS_KEY, JSON.stringify(submittedPass));
       localStorage.removeItem(PENDING_PASS_KEY);
-      setPass(nextPass);
-      setPassInput(secret);
-      setTx({ kind: "confirmed", hash: transactionHash });
+      setPass(submittedPass);
+      setTx({ kind: "confirmed", hash: response.transaction_hash });
     } catch (error) {
       setTx({ kind: "error", detail: error instanceof Error ? error.message : String(error) });
     }
   }
 
-  async function verifyAccess() {
-    setAccessResult("Checking Starknet…");
+  async function openGate() {
+    if (!eventOffer) { setGateResult("Load or create an event first."); return; }
+    const challenge = createGateChallenge(eventOffer.commitment);
+    const encoded = JSON.stringify(challenge);
+    setGateChallenge(challenge);
+    setChallengeText(encoded);
+    setProofText("");
+    setProofQr("");
+    setGateResult("Fresh five-minute challenge ready. Send it to the attendee device.");
+    try { await navigator.clipboard.writeText(encoded); } catch { /* Manual copy remains available. */ }
+  }
+
+  async function proveAdmission() {
     try {
-      if (!helperReady) throw new Error("The verifier becomes available after mainnet deployment.");
-      const commitment = commitmentFor(passInput.trim());
-      const [startedResult, expiryResult, offerResult, noteResult] = await Promise.all([
-        provider.callContract({
-          contractAddress: HELPER,
-          entrypoint: "get_started",
-          calldata: [commitment],
-        }),
-        provider.callContract({
-          contractAddress: HELPER,
-          entrypoint: "get_expiry",
-          calldata: [commitment],
-        }),
-        provider.callContract({
-          contractAddress: HELPER,
-          entrypoint: "get_offer",
-          calldata: [commitment],
-        }),
-        provider.callContract({
-          contractAddress: HELPER,
-          entrypoint: "get_note",
-          calldata: [commitment],
-        }),
-      ]);
-      const started = Number(num.toBigInt(startedResult[0] ?? "0x0"));
-      const expiry = Number(num.toBigInt(expiryResult[0] ?? "0x0"));
-      const offer = num.toHex(offerResult[0] ?? "0x0");
-      const note = num.toHex(noteResult[0] ?? "0x0");
-      setAccessResult(
-        expiry > Math.floor(Date.now() / 1000)
-          ? `Access active for ${Math.round((expiry - started) / 86_400)} days, until ${new Date(expiry * 1000).toLocaleString()}. Offer ${compact(offer)} · note ${compact(note)}.`
-          : "No active membership matches this pass secret.",
-      );
+      if (!pass) throw new Error("No admission pass is stored in this browser.");
+      const challenge = JSON.parse(challengeText) as GateChallenge;
+      const proof = await signGateChallenge(pass, challenge);
+      const encoded = JSON.stringify(proof);
+      setProofText(encoded);
+      setProofStatus("Signed locally. The private key never enters the gate payload.");
+      try { await navigator.clipboard.writeText(encoded); } catch { /* Manual copy remains available. */ }
     } catch (error) {
-      setAccessResult(error instanceof Error ? error.message : String(error));
+      setProofStatus(error instanceof Error ? error.message : String(error));
     }
   }
 
-  async function copySecret() {
-    if (pass) await navigator.clipboard.writeText(pass.secret);
+  async function admit() {
+    setGateResult("Checking signature and Starknet state…");
+    try {
+      if (!eventOffer || !gateChallenge) throw new Error("Open a fresh gate challenge first.");
+      const proof = JSON.parse(proofText) as Record<string, unknown>;
+      const local = await verifyGateProof(proof, gateChallenge);
+      if (!local.valid || !local.commitment) throw new Error(`Credential rejected: ${local.reason}.`);
+      if (gateChallenge.offerCommitment !== eventOffer.commitment) throw new Error("Gate is configured for a different event.");
+      const usedKey = `veilpass:admitted:${eventOffer.commitment}:${local.commitment}`;
+      if (localStorage.getItem(usedKey)) throw new Error("Replay blocked: this gate has already admitted the pass.");
+      const [startedResult, expiryResult, offerResult, noteResult] = await Promise.all([
+        provider.callContract({ contractAddress: HELPER, entrypoint: "get_started", calldata: [local.commitment] }),
+        provider.callContract({ contractAddress: HELPER, entrypoint: "get_expiry", calldata: [local.commitment] }),
+        provider.callContract({ contractAddress: HELPER, entrypoint: "get_offer", calldata: [local.commitment] }),
+        provider.callContract({ contractAddress: HELPER, entrypoint: "get_note", calldata: [local.commitment] }),
+      ]);
+      const started = Number(num.toBigInt(startedResult[0] ?? "0x0"));
+      const expiry = Number(num.toBigInt(expiryResult[0] ?? "0x0"));
+      const onchainOffer = num.toHex(offerResult[0] ?? "0x0");
+      const note = num.toHex(noteResult[0] ?? "0x0");
+      const now = Math.floor(Date.now() / 1000);
+      if (!started || !expiry || note === "0x0") throw new Error("No paid pass exists for this credential.");
+      if (onchainOffer !== eventOffer.commitment) throw new Error("The paid pass belongs to a different event.");
+      if (now < eventOffer.startsAt) throw new Error("The admission window has not opened.");
+      if (now >= eventOffer.closesAt || now >= expiry) throw new Error("The admission window has closed.");
+      localStorage.setItem(usedKey, String(now));
+      setGateResult(`ADMIT · device signature valid · paid event commitment ${compact(onchainOffer)} · note ${compact(note)}`);
+    } catch (error) {
+      setGateResult(error instanceof Error ? error.message : String(error));
+    }
   }
 
   return (
     <main>
       <div className="grain" aria-hidden="true" />
       <nav className="nav">
-        <a className="wordmark" href="#top" aria-label="Veilpass home">
-          VEIL<span>/</span>PASS
-        </a>
-        <button className="walletButton" onClick={() => setWalletPicker(true)}>
-          {address ? compact(address) : "Connect privacy wallet"}
-        </button>
+        <a className="wordmark" href="#top" aria-label="Mosby Pass home">MOSBY<span>/</span>PASS</a>
+        <div className="navClaim">PRIVATE EVENT ADMISSION · STARKNET</div>
+        <button className="walletButton" onClick={() => setWalletPicker(true)}>{address ? compact(address) : "Connect privacy wallet"}</button>
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow">STRK20 PRIVATE CREATOR MEMBERSHIP / 01</div>
-        <h1>
-          Support the work.
-          <br />
-          <em>Keep your wallet out of it.</em>
-        </h1>
-        <p className="heroCopy">
-          Veilpass converts a shielded STRK payment into a creator note and a fixed-term access
-          commitment. The creator never sees the subscriber&apos;s public wallet.
-        </p>
-        <div className="truthStrip">
-          <span>PUBLIC</span> helper, token, amount, time, opaque commitments
-          <span>HIDDEN</span> subscriber wallet, private balance, creator link
-        </div>
+        <div className="eyebrow">A PAYMENT SHOULD OPEN THE DOOR — NOT YOUR WALLET HISTORY</div>
+        <h1>PRIVATE ADMISSION</h1>
+        <p className="heroCopy">Mosby Pass turns shielded STRK into a device-bound event pass. Scan the invitation, pay privately, and prove the pass at the door without exposing your public wallet.</p>
       </section>
 
-      <section className="workbench" aria-label="Create a private membership">
-        <div className="ticketLabel">
-          <span>MEMBERSHIP INTAKE</span>
-          <b>№ 0001</b>
-        </div>
-        <div className="formPanel">
-          <div className={`offerState ${offerLocked ? "offerState-loaded" : ""}`}>
-            <b>{offerLocked ? "Creator offer loaded" : "Creator setup"}</b>
-            <span>
-              {offerLocked
-                ? "The recipient, price, and term are fixed by this link."
-                : "Choose the terms and create a private offer link for a subscriber."}
-            </span>
-            {offerLocked && <a href="./">Create another offer</a>}
-          </div>
-          <label>
-            Creator&apos;s registered privacy address
-            <input value={creator} onChange={(event) => setCreator(event.target.value)} placeholder="0x…" disabled={offerLocked} />
-          </label>
-          <div className="fieldPair">
-            <label>
-              Payment
-              <div className="amountField">
-                <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={offerLocked} />
-                <span>STRK</span>
-              </div>
-            </label>
-            <label>
-              Access term
-              <select value={days} onChange={(event) => setDays(Number(event.target.value))} disabled={offerLocked}>
-                <option value={7}>7 days</option>
-                <option value={30}>30 days</option>
-                <option value={90}>90 days</option>
-                <option value={365}>365 days</option>
-              </select>
-            </label>
-          </div>
-          {!offerLocked && (
-            <div className="offerTools">
-              <button className="offerButton" onClick={createOffer}>Copy creator offer link</button>
-              {offerLink && <a href={offerLink}>Open subscriber view</a>}
-              <p role="status">{offerStatus || "No payment is prepared while creating an offer."}</p>
-            </div>
-          )}
-          {offerLocked && <p className="offerNotice" role="status">{offerStatus}</p>}
+      <section className="routeStrip" aria-label="Mosby Pass flow">
+        {orderedStations.map((station) => (
           <button
-            className="joinButton"
-            onClick={join}
-            disabled={!offerLocked || tx.kind === "proving" || tx.kind === "submitted"}
+            key={station.id}
+            className={`folderTab folderTab-${station.id} ${activeStation === station.id ? "active" : ""}`}
+            onClick={() => setActiveStation(station.id)}
           >
-            {!offerLocked ? "Create an offer first" : address ? "Create private membership" : "Connect and continue"}
-            <span>↗</span>
+            <b>{station.number}</b><span>{station.name}</span><small>{station.detail}</small>
+          </button>
+        ))}
+      </section>
+
+      {activeStation === "organizer" && (
+      <section className="station station-organizer">
+        <header><span>STATION 01</span><h2>Print the invitation.</h2><p>The QR fixes the event, venue, price, recipient and gate window. It contains no attendee identity.</p></header>
+        <div className="formGrid">
+          <label>Event<input value={title} onChange={(event) => setTitle(event.target.value)} disabled={eventLocked} /></label>
+          <label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} disabled={eventLocked} /></label>
+          <label className="wide">Organizer&apos;s registered privacy address<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} placeholder="0x…" disabled={eventLocked} /></label>
+          <label>Price<div className="amountField"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={eventLocked} /><span>STRK</span></div></label>
+          <label>Doors open<input type="datetime-local" value={startsInput} onChange={(event) => setStartsInput(event.target.value)} disabled={eventLocked} /></label>
+          <label>Doors close<input type="datetime-local" value={closesInput} onChange={(event) => setClosesInput(event.target.value)} disabled={eventLocked} /></label>
+          <div className="wide actionLine">
+            {!eventLocked ? <button className="primary" onClick={createOffer}>Generate event QR <span>↗</span></button> : <a className="resetLink" href="./">Create another event</a>}
+            <p role="status">{offerStatus}</p>
+          </div>
+        </div>
+        <aside className="qrTicket">
+          <div className="ticketTop"><span>{eventOffer?.title ?? "EVENT QR"}</span><b>№ 001</b></div>
+          {offerQr ? <img src={offerQr} alt="Event offer QR code" /> : <div className="qrPlaceholder">QR<br />PENDING</div>}
+          <code>{offerLink ? compact(offerLink) : "terms become a shareable link"}</code>
+        </aside>
+      </section>
+      )}
+
+      {activeStation === "attendee" && (
+      <section className="station station-attendee">
+        <header><span>STATION 02</span><h2>Pay without checking in publicly.</h2><p>Ready or Xverse constructs the privacy proof. Mosby Pass receives neither the viewing key nor the public-wallet link.</p></header>
+        <div className="eventBill">
+          <div className="billMeta"><span>ADMISSION FOR</span><b>{eventOffer?.title ?? "Open an event QR"}</b></div>
+          <dl>
+            <div><dt>Venue</dt><dd>{eventOffer?.venue ?? "—"}</dd></div>
+            <div><dt>Window</dt><dd>{eventOffer ? `${new Date(eventOffer.startsAt * 1000).toLocaleString()} → ${new Date(eventOffer.closesAt * 1000).toLocaleTimeString()}` : "—"}</dd></div>
+            <div><dt>Total</dt><dd>{eventOffer?.amountText ?? "—"} STRK</dd></div>
+          </dl>
+          <button className="primary buyButton" onClick={buyPass} disabled={!eventOffer || tx.kind === "proving" || tx.kind === "submitted"}>
+            {!eventOffer ? "Scan an event first" : address ? "Pay privately & activate pass" : "Connect wallet & continue"}<span>↗</span>
           </button>
           <div className={`status status-${tx.kind}`} role="status">
             {tx.kind === "idle" && "No transaction is prepared until you confirm."}
             {tx.kind === "proving" && tx.detail}
-            {tx.kind === "submitted" && <>Submitted: <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">{compact(tx.hash)}</a></>}
-            {tx.kind === "confirmed" && <>Confirmed: <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">{compact(tx.hash)}</a></>}
+            {tx.kind === "submitted" && <>Submitted · <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">{compact(tx.hash)}</a></>}
+            {tx.kind === "confirmed" && <>Pass active · <a href={`https://voyager.online/tx/${tx.hash}`} target="_blank" rel="noreferrer">transaction {compact(tx.hash)}</a></>}
             {tx.kind === "error" && tx.detail}
           </div>
         </div>
-        <aside className="routePanel">
-          <div className="routeNumber">03</div>
-          <h2>One proof.<br />Three actions.</h2>
-          <ol>
-            <li><b>Withdraw</b><span>shielded balance → shared helper</span></li>
-            <li><b>Open note</b><span>creator receives the payment privately</span></li>
-            <li><b>Invoke</b><span>offer, pass, note, and expiry bound atomically</span></li>
-          </ol>
-          <p>The wallet owns the viewing key and builds the proof. Veilpass never receives either.</p>
+        <aside className={`devicePass ${pass ? "devicePass-live" : ""}`}>
+          <div className="passNotch" />
+          <span>DEVICE PASS</span>
+          <h3>{pass?.eventTitle ?? "Created after payment"}</h3>
+          <p>{pass?.venue ?? "A fresh signing key stays in this browser."}</p>
+          <code>{pass ? compact(pass.commitment) : "NO CREDENTIAL"}</code>
+          <b>{pass ? "READY FOR CHALLENGE" : "INACTIVE"}</b>
         </aside>
       </section>
+      )}
 
-      <section className="passSection">
-        <div>
-          <div className="eyebrow">BEARER ACCESS / KEEP LOCAL</div>
-          <h2>The public chain sees commitments.<br />You keep the secret.</h2>
-          <p>
-            A real publisher would verify the secret server-side before returning protected media.
-            This demo verifies the entitlement only; it does not claim static browser assets are private.
-          </p>
+      {activeStation === "gate" && (
+      <section className="station station-gate">
+        <header><span>STATION 03</span><h2>Prove the pass. Not the person.</h2><p>A fresh challenge blocks screenshots and copied bearer codes. This MVP consumes passes locally on one gate device.</p></header>
+        <div className="gateConsole">
+          <div className="gateStep">
+            <b>GATE</b><span>Issue a five-minute challenge</span>
+            <button onClick={openGate} disabled={!eventOffer}>Open gate</button>
+            {challengeQr && <img src={challengeQr} alt="Gate challenge QR code" />}
+            <textarea value={challengeText} onChange={(event) => setChallengeText(event.target.value)} placeholder="Challenge JSON" aria-label="Gate challenge" />
+          </div>
+          <div className="gateStep">
+            <b>ATTENDEE</b><span>Sign on the pass device</span>
+            <button onClick={proveAdmission} disabled={!challengeText || !pass}>Create admission proof</button>
+            {proofQr && <img src={proofQr} alt="Signed admission proof QR code" />}
+            <textarea value={proofText} onChange={(event) => setProofText(event.target.value)} placeholder="Signed proof JSON" aria-label="Admission proof" />
+            <small>{proofStatus}</small>
+          </div>
+          <div className="gateStep gateDecision">
+            <b>SCANNER</b><span>Verify device + event + payment + time</span>
+            <button onClick={admit} disabled={!proofText || !gateChallenge}>Validate & admit</button>
+            <div className={gateResult.startsWith("ADMIT") ? "admitSignal active" : "admitSignal"}>{gateResult.startsWith("ADMIT") ? "ADMIT" : "HOLD"}</div>
+            <p role="status">{gateResult || "Waiting for a fresh signed proof."}</p>
+          </div>
         </div>
-        <div className="passCard">
-          <div className="passCut">PRIVATE MEMBER</div>
-          <code>{pass ? compact(pass.secret) : "created after confirmation"}</code>
-          {pass && <small>offer {compact(pass.offerCommitment)}</small>}
-          <button onClick={copySecret} disabled={!pass}>Copy pass secret</button>
-        </div>
-        <div className="verifyBox">
-          <label>
-            Verify a pass secret
-            <input value={passInput} onChange={(event) => setPassInput(event.target.value)} placeholder="0x…" />
-          </label>
-          <button onClick={verifyAccess}>Check access</button>
-          <p role="status">{accessResult || "Hash locally, then read the expiry from Starknet."}</p>
-        </div>
+      </section>
+      )}
+
+      <section className="truthSection">
+        <div><span>HIDDEN</span><h2>Attendee wallet<br />Private balance<br />Organizer link</h2></div>
+        <div><span>PUBLIC</span><h2>Helper · token · amount<br />time · opaque commitments</h2></div>
+        <p>Mosby Pass does not hide faces, IP addresses, device fingerprints, transaction amounts or timing. The browser-held key is an MVP credential, not a hardware-backed passkey. Multi-gate replay protection requires an organizer-operated private gate service.</p>
       </section>
 
       <footer>
-        <span>VEILPASS / PREPAID MEMBERSHIP MVP</span>
-        <a href="https://strk20.starknet.io/hackathon" target="_blank" rel="noreferrer">Private Sprint 2026 ↗</a>
+        <span>MOSBY PASS / PRIVATE EVENT ADMISSION</span>
+        <a href={`https://voyager.online/contract/${HELPER}`} target="_blank" rel="noreferrer">MAINNET HELPER {compact(HELPER)} ↗</a>
         <span>NO VIEWING KEY IN THE DAPP</span>
       </footer>
 
@@ -459,11 +458,9 @@ export default function Home() {
               {wallets.length ? wallets.map((wallet) => (
                 <button key={wallet.name} onClick={() => connect(wallet)}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={wallet.icon} alt="" />
-                  <span>{wallet.name}</span>
-                  <b>→</b>
+                  <img src={wallet.icon} alt="" /><span>{wallet.name}</span><b>Connect ↗</b>
                 </button>
-              )) : <div className="noWallet">No compatible wallet detected. Install Ready or Xverse, then reload.</div>}
+              )) : <div className="noWallet">No compatible privacy wallet was discovered in this browser.</div>}
             </div>
           </div>
         </div>

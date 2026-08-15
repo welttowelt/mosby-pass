@@ -1,88 +1,78 @@
-# Creator offer and access protocol
+# Event offer and admission protocol
 
-Veilpass binds each prepaid membership to terms chosen by the creator without
-putting the creator address in the helper calldata.
+Mosby Pass binds a private payment to one event without putting the organizer
+address or event details in the deployed helper calldata.
 
-## Commitments
+## Event offer
 
-The creator generates a private offer link containing:
-
-- the creator's registered privacy address;
-- the STRK amount;
-- one of the supported access terms;
-- a random non-zero felt used as the offer nonce.
-
-The subscriber client computes:
+The organizer link contains the event name, venue, registered privacy address,
+STRK amount, opening and closing times, and a random non-zero felt. The attendee
+computes:
 
 ```text
-offer_commitment = Poseidon(creator, amount, duration_days, offer_nonce)
-access_commitment = Poseidon(access_secret)
+event_commitment = Poseidon(
+  organizer,
+  amount,
+  StarknetKeccak(event_name),
+  StarknetKeccak(venue),
+  opens_at,
+  closes_at,
+  nonce
+)
 ```
 
-The creator address goes to the STRK20 open-note action, not the helper call.
-The helper records the offer commitment, access commitment, activation time,
-expiry, and wallet-resolved note ID only after exact token approval succeeds.
-Each access commitment and note ID can be recorded once.
+Changing any field changes the commitment. Disabled form fields only guide the
+normal client; the gate independently requires the expected commitment.
 
-## Publisher verification
+## Device credential
 
-The reusable verifier is
-[`web/src/lib/verify-membership.mjs`](../web/src/lib/verify-membership.mjs).
-A publisher supplies the bearer secret, its expected offer commitment and term,
-plus a callback backed by the creator wallet's private viewing context.
+The attendee browser creates an ephemeral P-256 key pair. Its public key is
+split into four 128-bit limbs and hashed with Poseidon. The deployed helper
+stores a second Poseidon hash of that key identifier as the access commitment.
+The private key remains in local browser state.
 
-The verifier:
+This improves on a plain bearer secret because a screenshot or copied public
+payload cannot answer a new challenge. The current key is exportable browser
+state, not a hardware-backed passkey, and an injected script in the same origin
+could steal it. A production client should move the key into a wallet, secure
+enclave, or non-exportable credential store.
 
-1. hashes the bearer secret locally;
-2. reads `get_started`, `get_expiry`, `get_offer`, and `get_note` from Starknet;
-3. requires the exact creator offer commitment;
-4. requires `expiry == started_at + expected_duration`;
-5. rejects expired records;
-6. asks the creator wallet to confirm that the recorded note ID was received
-   with the expected token and amount.
+## Payment activation
 
-The callback is mandatory. Public helper state alone cannot confirm the private
-note recipient.
+The Wallet API v6 action sequence is unchanged from the deployed helper:
 
-```js
-const result = await verifyMembership({
-  provider,
-  helper,
-  secret: bearerSecret,
-  expectedOfferCommitment,
-  expectedDurationSeconds: 30 * 24 * 60 * 60,
-  receivedNote: async (noteId) => creatorWallet.receivedNote({
-    noteId,
-    token: STRK,
-    amount: expectedAmount,
-  }),
-});
-```
+1. withdraw shielded STRK to the helper;
+2. create an open note for the organizer;
+3. invoke the helper with token, amount, access commitment, duration, event
+   commitment, and the wallet-resolved note ID.
 
-`receivedNote` is an integration boundary, not a standardized wallet method.
-The publisher must implement it against the creator wallet or viewing service
-it controls. Veilpass never receives the viewing key.
+The helper records state only after exact token approval succeeds. Its immutable
+ABI retains membership-era names, but the stored primitive is general: payment,
+opaque offer commitment, opaque access commitment, note ID, start, and expiry.
 
-## Adversarial cases
+## Gate verification
 
-- Changing the recipient, price, or term in a modified browser client produces
-  a different offer commitment or an unconfirmed note. The publisher rejects it.
-- Asking for a longer expiry fails the exact start-to-expiry duration check.
-- Reusing an earlier creator note fails the helper's global note replay check.
-- Reusing a bearer secret fails the access-commitment replay check.
-- A failed token approval leaves the access, offer, start, expiry, and note state
-  unwritten.
+The gate challenge contains the event commitment, a random nonce, and issue
+time. It expires after five minutes. The attendee signs the canonical challenge
+with ECDSA P-256. The scanner then:
 
-Disabled browser fields only guide the normal flow. Publisher verification and
-creator-side note receipt enforce the offer.
+1. requires the exact challenge object;
+2. derives the access commitment from the supplied public key;
+3. verifies the signature;
+4. reads start, expiry, event commitment, and note ID from Starknet;
+5. enforces the event window;
+6. records local one-time consumption.
 
-## Privacy boundary
+The reusable organizer verifier in `web/src/lib/verify-membership.mjs` retains a
+mandatory private `receivedNote` callback. Public helper state cannot by itself
+confirm the private note recipient. The interactive static demo can show the
+pool-generated note identifier but cannot access the organizer viewing context.
 
-Share creator offer links through a private channel. If an offer link becomes
-public, its nonce lets an observer recompute that offer commitment from the
-visible creator, amount, and term, then correlate it with helper state.
+## Known limits
 
-The public chain still exposes the helper, token, amount, activation time,
-expiry, opaque offer commitment, opaque access commitment, and note ID. STRK20
-hides the subscriber wallet and the open-note recipient link. The static demo
-does not make browser assets private.
+- Event links disclose their terms to anyone who receives them.
+- Amount, timing, helper, and opaque commitments remain public.
+- Local consumption only blocks replay at one browser profile.
+- Multi-gate replay resistance needs synchronized private state.
+- The app does not hide a person's physical presence, face, IP, or device
+  fingerprint.

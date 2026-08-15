@@ -24,7 +24,7 @@ instead of copying addresses from prose.
 
 Completed wallet actions:
 
-1. Declare the verified Veilpass class on mainnet, unless its class hash already
+1. Declare the verified legacy `Veilpass` class on mainnet, unless its class hash already
    exists.
 2. Deploy one instance with the configured STRK20 pool as its constructor input.
 3. Confirm the deployed pool getter returns the expected address.
@@ -56,7 +56,7 @@ sncast call --network mainnet --contract-address <DEPLOYED_HELPER> \
   --function get_pool
 ```
 
-The first two commands submit transactions and may spend STRK on fees. Veilpass
+The first two commands submit transactions and may spend STRK on fees. Mosby Pass
 completed them under the campaign's bounded execution authority; receipt and
 post-state evidence is in
 [`audit/mainnet-helper-deployment-2026-08-15.md`](../audit/mainnet-helper-deployment-2026-08-15.md).
@@ -71,9 +71,9 @@ post-state evidence is in
 
 Use small amounts. Each transaction must succeed and include a STRK20 pool event.
 
-1. Create one private membership.
-2. Create a second membership with a different secret and duration.
-3. Create a third membership or a separate shielded transfer that exercises the
+1. Activate one private event pass.
+2. Activate a second pass with a different device key and event commitment.
+3. Activate a third pass or a separate shielded transfer that exercises the
    live product flow.
 
 Record only verified hashes in `strk20.json`. The user's wallet confirms every

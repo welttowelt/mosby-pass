@@ -1,174 +1,160 @@
-# Veilpass
+# Mosby Pass
 
-Private creator memberships on Starknet.
+Private event admission on Starknet.
 
-A subscriber pays from a shielded STRK balance. The creator receives a private
-open note. The shared helper records a fixed-term access commitment, without
-receiving the subscriber's public wallet or viewing key.
+An attendee scans an event QR, pays from shielded STRK, and receives a
+device-bound pass. At the door, a fresh challenge proves control of that pass
+without exposing the attendee's public wallet to the organizer.
 
-Veilpass is a prepaid membership MVP for the STRK20 Private Sprint. It does not
-pretend recurring private billing exists before it does.
+> Scan. Pay privately. Walk in.
 
 ## Current build
 
 | Component | Status |
 | --- | --- |
-| Cairo helper | Builds locally |
-| Contract tests | 15 pass, including 500 fuzz runs |
-| Client and publisher verifier tests | 12 pass |
+| Mainnet payment helper | [Deployed](https://voyager.online/contract/0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6) |
+| Cairo tests | 15 pass, including 500 fuzz runs |
+| Client and verifier tests | 13 pass |
 | Static client | Typecheck and production build pass |
 | Dependency audit | 0 known vulnerabilities |
-| Security checkpoint | No retained high-severity finding in the current delta review |
-| Mainnet helper | [Deployed](https://voyager.online/contract/0x05dd2c68fa1c0fba3b425a7c855fbc0a60867763b2688bf44f2225d422173da6) |
-| Public demo | [Live on GitHub Pages](https://welttowelt.github.io/veilpass/) |
+| Public demo | [GitHub Pages](https://welttowelt.github.io/mosby-pass/) |
 
-The repository only calls something complete after it has been checked. Mainnet
-addresses and transaction hashes stay empty until they exist.
+The product was renamed from Veilpass to Mosby Pass. The already-deployed Cairo
+class and compatibility storage keys retain their original technical names;
+renaming an immutable mainnet ABI would require a new deployment without adding
+privacy or admission guarantees.
 
-## The transaction
+## The flow
 
-The creator first chooses a registered privacy address, amount, and access term.
-Veilpass generates a private offer link with a random nonce. The subscriber
-client commits to those terms as
-`Poseidon(creator, amount, duration_days, offer_nonce)`.
+### 1. Organizer
 
-The privacy wallet then prepares one STRK20 transaction with three actions.
-
-1. Withdraw the membership amount from the subscriber's shielded balance to the
-   shared Veilpass helper.
-2. Create an open note for the creator. The pool knows the note recipient, but
-   public observers cannot link that creator to the subscriber's wallet.
-3. Invoke the helper. It records the access and offer commitments, activation
-   time, expiry, and note ID, approves the exact payment amount back to the
-   pool, and returns the open-note deposit.
-
-The helper calldata ends with `${openNoteIds[0]}`. The wallet replaces that
-literal placeholder with the note ID while assembling the transaction.
+The organizer chooses an event name, venue, registered privacy address, STRK
+price, and admission window. Mosby Pass produces a QR-backed event link with a
+random nonce and commits to all of those terms.
 
 ```text
-shielded subscriber balance
-  -> shared Veilpass helper
-  -> creator's private open note
-
-random local secret
-  -> Poseidon commitment on Starknet
-  -> fixed membership expiry
-
-private creator offer
-  -> Poseidon(creator, amount, term, nonce)
-  -> exact publisher-side offer check
+event_commitment = Poseidon(
+  organizer,
+  amount,
+  StarknetKeccak(event_name),
+  StarknetKeccak(venue),
+  opens_at,
+  closes_at,
+  nonce
+)
 ```
+
+### 2. Attendee
+
+The browser generates an ephemeral P-256 signing key and derives the access
+commitment from its public key. Ready or Xverse then prepares one STRK20
+transaction:
+
+1. withdraw the amount from the attendee's shielded balance to the shared
+   helper;
+2. create a private open note for the organizer;
+3. call the helper through the STRK20 pool, binding the payment note, event
+   commitment, access commitment, activation time, and expiry atomically.
+
+The helper never receives the attendee wallet, organizer address, viewing key,
+event name, or venue.
+
+### 3. Gate
+
+The gate issues a random challenge valid for five minutes. The attendee device
+signs it with the admission key. The scanner verifies:
+
+- the exact challenge and event commitment;
+- the P-256 signature and its derived access commitment;
+- the recorded mainnet payment, open-note ID, and active expiry;
+- the event's opening and closing time;
+- local one-time consumption on the gate device.
+
+A copied screenshot or static bearer code cannot answer a fresh challenge.
 
 ## Privacy boundary
 
-Public onchain data includes the helper, token, amount, time, expiry, and access
-commitment. Open-note amounts are public by design.
+Hidden by STRK20:
 
-The STRK20 transaction hides the link to the subscriber's public wallet and the
-creator recipient. The dapp never asks for a viewing key. Ready or Xverse keeps
-the private state and prepares the cryptographic proof inside the wallet flow.
+- attendee public wallet;
+- attendee private balance;
+- the public-wallet-to-organizer payment link.
 
-The access secret stays in the subscriber's browser. A publisher hashes that
-secret and verifies the recorded offer, exact start-to-expiry duration, active
-expiry, and creator-received note before returning protected content. The
-reusable verifier lives in
-[`web/src/lib/verify-membership.mjs`](web/src/lib/verify-membership.mjs).
+Public on Starknet:
 
-The creator-side note check uses the creator wallet's private viewing context.
-Veilpass never receives that viewing key. The demo only reads public entitlement
-state. Static browser assets are not private.
-Veilpass stores a pending pass before asking the wallet to generate a proof. A
-refresh can recover the secret and resume transaction confirmation.
+- helper and token addresses;
+- amount and timing;
+- opaque access and event commitments;
+- activation, expiry, and open-note identifier.
 
-Creator offer links must travel through a private channel. If a link leaks, its
-nonce lets an observer recompute and correlate that offer commitment. See the
-[offer protocol](docs/offer-protocol.md) for the enforcement and privacy model.
+Mosby Pass does not hide a face at the venue, IP address, device fingerprint,
+amount, or timing. The current browser credential is not hardware-backed.
+One-time consumption is local to one gate device; multiple synchronized gates
+need an organizer-operated private service. The organizer should additionally
+confirm the received note from its private wallet context before admitting.
 
 ## Contract invariants
 
-- Only the configured STRK20 pool can activate an entitlement.
-- Token, amount, access commitment, offer commitment, and final open-note ID
-  must be non-zero.
-- Expiry must be in the future and at most 366 days away.
+- Only the configured STRK20 pool can activate a pass.
+- Token, amount, access commitment, event commitment, and open-note ID must be
+  non-zero.
+- Expiry must be in the future and no more than 366 days away.
 - Each access commitment and open-note ID can be activated once.
 - The helper must hold the full payment amount.
-- ERC-20 approval is exact and must succeed before membership state is written.
-- Activation time, expiry, offer commitment, and note ID are written only after
-  approval succeeds.
+- ERC-20 approval is exact and must succeed before admission state is written.
 - The returned note ID, token, and amount match the wallet request.
 
-The contract and client checkpoints are in
-[audit/report-2026-08-15.md](audit/report-2026-08-15.md) and
-[audit/client-report-2026-08-15.md](audit/client-report-2026-08-15.md). The
-[score-gap checkpoint](audit/score-gap-2026-08-15.md) tracks the distance from
-the full recurring-subscription RFP and final hackathon eligibility.
+The deployed class is unchanged by the product pivot. Existing contract audit
+evidence remains in [`audit/`](audit/); the event-admission delta is covered by
+the browser credential tests and the pivot checkpoint.
 
-## Run the contract tests
+## Run locally
 
-The repository currently uses Cairo and Scarb 2.14.0 with Starknet Foundry
-0.55.0.
+The pinned toolchain is Scarb 2.14.0, Starknet Foundry 0.55.0, Next.js 16.3.1,
+and starknet.js 10.4.0.
 
 ```bash
 scarb build
 snforge test
-```
 
-## Run the client
-
-The web app follows Wallet API v6 and starknet.js 10.4.0. It supports privacy
-wallet discovery, creator offer links, the three-action membership transaction,
-local pass-secret generation, onchain entitlement checks, and a reusable
-publisher verifier.
-
-```bash
 cd web
 npm install
 cp .env.example .env.local
+npm run typecheck
+npm run test:actions
 npm run dev
 ```
 
-Set these values in `.env.local`.
+Set these client values in `.env.local`:
 
 ```text
 NEXT_PUBLIC_STARKNET_RPC_URL=<mainnet RPC URL>
-NEXT_PUBLIC_VEILPASS_HELPER=<deployed helper address>
+NEXT_PUBLIC_VEILPASS_HELPER=<deployed compatibility helper address>
 ```
 
-Run the client and publisher-verifier tests.
-
-```bash
-cd web
-node --test tests/*.test.mjs
-```
-
-Before declaration, reproduce every source hash, contract artifact, test, and
-production client build in one pass.
+Run the deterministic release gate from the repository root:
 
 ```bash
 ./scripts/verify-release.sh
 ```
 
-## Mainnet gate
+## Sprint status
 
-The sprint requires a public demo, a three-minute video, and at least three
-successful mainnet transactions that touch the STRK20 pool. The execution
-account is registered and the audited helper is live. One qualifying pool
-transaction is recorded in `strk20.json`; two product-flow transactions and the
-video remain.
+The execution account is registered with the STRK20 privacy pool and the helper
+is deployed. One qualifying pool transaction is recorded in `strk20.json`; two
+event-flow transactions and the public demo video remain before final sprint
+submission.
 
-Membership transactions spend funds and require bounded execution authority.
-No script in this repository holds a private key.
+Transactions spend STRK and require bounded execution authority. No repository
+script contains a private key.
 
-## Built from public interfaces
+## Sources and design reference
 
 - [STRK20 Private Sprint](https://strk20.starknet.io/hackathon)
-- [Starknet.js WalletAccountV6 guide](https://starknet-js.com/docs/next/guides/account/walletAccount/#with-get-starknet-v6)
-- [STRK20 starter kit](https://github.com/Akashneelesh/strk20-starter-kit)
-- [Starknet privacy contracts and SDK](https://github.com/starkware-libs/starknet-privacy)
-
-The wallet discovery and package-version choices follow the MIT-licensed starter
-kit. Veilpass replaces its echo demo with a tested membership helper and access
-commitment flow.
+- [STRK20 privacy contracts and SDK](https://github.com/starkware-libs/starknet-privacy)
+- [Starknet.js Wallet API v6 guide](https://starknet-js.com/docs/next/guides/account/walletAccount/#with-get-starknet-v6)
+- [Mosby's Files](https://www.mosbyfiles.com/) by Tubik — visual reference for
+  the file-stack navigation; Mosby Pass is not affiliated with that project.
 
 ## License
 

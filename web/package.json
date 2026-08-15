@@ -1,5 +1,5 @@
 {
-  "name": "veilpass-web",
+  "name": "mosby-pass-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -14,12 +14,14 @@
     "@starknet-io/get-starknet-wallet-standard": "6.0.2",
     "@starknet-io/types-js": "0.10.3",
     "next": "16.3.1",
+    "qrcode": "1.5.4",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "starknet": "10.4.0"
   },
   "devDependencies": {
     "@types/node": "24.10.2",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "typescript": "5.9.3"
